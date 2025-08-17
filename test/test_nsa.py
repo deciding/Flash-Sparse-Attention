@@ -1,0 +1,135 @@
+# This file is modified from the original implementation (implemented by Xunhao Lai)
+import argparse
+import torch
+
+if __name__ == "__main__":
+    torch.manual_seed(42)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seqlen", type=int, default=1000)
+    parser.add_argument("--seqlens", nargs="+", type=int, default=[1000])
+    parser.add_argument("--heads", type=int, default=1)
+    parser.add_argument("--kv-heads", type=int, default=-1)
+    parser.add_argument("--gqa-deg", type=int, default=1)
+    parser.add_argument('--topk', type=int, default=64)
+    parser.add_argument("--use-FSA", action="store_true")
+    parser.add_argument("--kernel-stride", type=int, default=16)
+    parser.add_argument("--nseqs", type=int, default=1)
+    parser.add_argument("--block-size", type=int, default=64)
+    parser.add_argument("--hidden-size", type=int, default=4096)
+    parser.add_argument("--bench-bwd", action="store_true")
+    parser.add_argument("--dtype",            type=str,  default="float16",
+                    choices=["bfloat16", "float16", "float32"])
+
+
+    args = parser.parse_args()
+    DTYPE = dict(bfloat16=torch.bfloat16, float16=torch.float16,
+             float32=torch.float32)[args.dtype]
+    seqlen = args.seqlen
+
+
+    if args.kv_heads > 0:
+        q_heads = args.kv_heads * args.gqa_deg
+        kv_heads = args.kv_heads
+    else:
+        q_heads = args.heads
+        kv_heads = args.heads // args.gqa_deg
+    assert q_heads % args.gqa_deg == 0
+
+
+    if args.use_FSA:
+        from FSA_core.module.FSA import NativeSparseAttention, RopeConfig
+    else:
+        from native_sparse_attention_ref.module import NativeSparseAttention, RopeConfig
+
+
+    NSA = (
+        NativeSparseAttention(
+            hidden_size=args.hidden_size,
+            num_q_heads=q_heads,
+            num_kv_heads=kv_heads,
+            head_dim=128,
+            kernel_size=32,
+            kernel_stride=args.kernel_stride,
+            block_size=args.block_size,
+            topk=args.topk,
+            init_blocks=1,
+            local_blocks=2,
+            window_size=512,
+            rope_config=RopeConfig(
+                max_position_embeddings=131072,
+                head_dim=128,
+                rope_theta=500000,
+                rope_scaling={
+                    "factor": 8.0,
+                    "high_freq_factor": 4.0,
+                    "low_freq_factor": 1.0,
+                    "original_max_position_embeddings": 8192,
+                    "rope_type": "llama3",
+                },
+            ),
+        )
+        .cuda()
+        .to(DTYPE)
+    )
+    print("======= Args: Native Sparse Attention =======\n")
+
+    print(f"q_heads={q_heads}, kv_heads={kv_heads}")
+    print(args, "\n")
+
+    print("======= Init Moduel: Native Sparse Attention =======\n")
+    for name, param in NSA.named_parameters():
+        print(f"NSA Parameters, {name}, shape: {param.shape}\n")
+
+    # random input
+    if args.nseqs > 1:
+        seqlens = torch.LongTensor([seqlen] * args.nseqs).int().cuda()
+    else:
+        seqlens = torch.LongTensor(args.seqlens).int().cuda()
+
+    cu_seqlens = torch.cat(
+        [
+            torch.zeros(1, dtype=torch.int32, device="cuda"),
+            torch.cumsum(seqlens, dim=0),
+        ],
+        dim=0,
+    ).to(torch.int32)
+    x = torch.zeros(cu_seqlens[-1], args.hidden_size, device="cuda", dtype=DTYPE).uniform_(-1, 1)
+    x = torch.randn(cu_seqlens[-1], args.hidden_size, device="cuda", dtype=DTYPE)
+
+    # warmup
+    print("======= NSA Forward & Backward Performance Test =======\n")
+    for i in range(4):
+        y = NSA(x, cu_seqlens)
+        loss = (y * torch.randn_like(y)).sum(-1).mean()
+        loss.backward()
+
+    torch.cuda.synchronize()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+
+    start_event.record()
+    num_iters = 4
+    for i in range(num_iters):
+        y = NSA(x, cu_seqlens)
+        if args.bench_bwd:
+            loss = (y * torch.randn_like(y)).sum(-1).mean()
+            loss.backward()
+
+    end_event.record()
+    torch.cuda.synchronize()
+
+    elapsed_ms = start_event.elapsed_time(end_event) / num_iters
+
+    print(f"[NSA E2E (with bwd={args.bench_bwd})] Time: {elapsed_ms:.3f} ms\n")
+
+    print("======= NSA Forward & Backward Output Test =======\n")
+    y = NSA(x, cu_seqlens)
+    print(f"Forward, output shape: {y.shape}, output norm: {y.norm()}\n")
+
+    # backward test
+    loss = (y * torch.randn_like(y)).sum(-1).mean()
+    loss.backward()
+    for name, param in NSA.named_parameters():
+        print(f"Backward, {name}, grad shape: {param.grad.shape}, grad norm: {param.grad.norm()}\n")
+
+    print('[Max allocated]:', torch.cuda.max_memory_allocated() / 1024**3)

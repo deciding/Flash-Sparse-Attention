@@ -1,0 +1,5 @@
+ninja
+transformers
+datasets
+accelerate
+flash-attn==2.6.3
