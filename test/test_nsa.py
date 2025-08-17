@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--nseqs", type=int, default=1)
     parser.add_argument("--block-size", type=int, default=64)
     parser.add_argument("--hidden-size", type=int, default=4096)
-    parser.add_argument("--bench-bwd", action="store_true")
+    parser.add_argument("--benchmark-bwd", action="store_true")
     parser.add_argument("--dtype",            type=str,  default="float16",
                     choices=["bfloat16", "float16", "float32"])
 
@@ -38,11 +38,12 @@ if __name__ == "__main__":
 
     if args.use_FSA:
         from FSA_core.module.FSA import NativeSparseAttention, RopeConfig
+        sparse_attn_name = "FSA"
     else:
         from native_sparse_attention_ref.module import NativeSparseAttention, RopeConfig
+        sparse_attn_name = "NSA"
 
-
-    NSA = (
+    sparse_attn = (
         NativeSparseAttention(
             hidden_size=args.hidden_size,
             num_q_heads=q_heads,
@@ -71,14 +72,13 @@ if __name__ == "__main__":
         .cuda()
         .to(DTYPE)
     )
-    print("======= Args: Native Sparse Attention =======\n")
+    print(f"======= Num Heads: {sparse_attn_name} =======\n")
 
-    print(f"q_heads={q_heads}, kv_heads={kv_heads}")
-    print(args, "\n")
+    print(f"q_heads={q_heads}, kv_heads={kv_heads}\n")
 
-    print("======= Init Moduel: Native Sparse Attention =======\n")
-    for name, param in NSA.named_parameters():
-        print(f"NSA Parameters, {name}, shape: {param.shape}\n")
+    print(f"======= Init Moduel: {sparse_attn_name} =======\n")
+    for name, param in sparse_attn.named_parameters():
+        print(f"{sparse_attn_name} Parameters, {name}, shape: {param.shape}\n")
 
     # random input
     if args.nseqs > 1:
@@ -93,15 +93,15 @@ if __name__ == "__main__":
         ],
         dim=0,
     ).to(torch.int32)
-    x = torch.zeros(cu_seqlens[-1], args.hidden_size, device="cuda", dtype=DTYPE).uniform_(-1, 1)
     x = torch.randn(cu_seqlens[-1], args.hidden_size, device="cuda", dtype=DTYPE)
 
     # warmup
-    print("======= NSA Forward & Backward Performance Test =======\n")
+    print(f"======= {sparse_attn_name} Forward & Backward Performance Test =======\n")
     for i in range(4):
-        y = NSA(x, cu_seqlens)
-        loss = (y * torch.randn_like(y)).sum(-1).mean()
-        loss.backward()
+        y = sparse_attn(x, cu_seqlens)
+        if args.benchmark_bwd:
+            loss = (y * torch.randn_like(y)).sum(-1).mean()
+            loss.backward()
 
     torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
@@ -110,8 +110,8 @@ if __name__ == "__main__":
     start_event.record()
     num_iters = 4
     for i in range(num_iters):
-        y = NSA(x, cu_seqlens)
-        if args.bench_bwd:
+        y = sparse_attn(x, cu_seqlens)
+        if args.benchmark_bwd:
             loss = (y * torch.randn_like(y)).sum(-1).mean()
             loss.backward()
 
@@ -120,16 +120,20 @@ if __name__ == "__main__":
 
     elapsed_ms = start_event.elapsed_time(end_event) / num_iters
 
-    print(f"[NSA E2E (with bwd={args.bench_bwd})] Time: {elapsed_ms:.3f} ms\n")
+    if args.benchmark_bwd:
+        benchmark_mode = "Fwd+Bwd"
+    else:
+        benchmark_mode = "Fwd"
+    print(f"[{sparse_attn_name} E2E ({benchmark_mode})] Time: {elapsed_ms:.3f} ms\n")
 
-    print("======= NSA Forward & Backward Output Test =======\n")
-    y = NSA(x, cu_seqlens)
+    print(f"======= {sparse_attn_name} Forward & Backward Output Test =======\n")
+    y = sparse_attn(x, cu_seqlens)
     print(f"Forward, output shape: {y.shape}, output norm: {y.norm()}\n")
 
     # backward test
     loss = (y * torch.randn_like(y)).sum(-1).mean()
     loss.backward()
-    for name, param in NSA.named_parameters():
+    for name, param in sparse_attn.named_parameters():
         print(f"Backward, {name}, grad shape: {param.grad.shape}, grad norm: {param.grad.norm()}\n")
 
     print('[Max allocated]:', torch.cuda.max_memory_allocated() / 1024**3)

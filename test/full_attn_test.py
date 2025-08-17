@@ -3,7 +3,7 @@ import torch
 from native_sparse_attention_ref.ops.triton.flash_attention import flash_attention_varlen
 
 
-def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads=64, num_kv_heads=4, dtype=torch.bfloat16, bench_bwd=False):
+def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads=64, num_kv_heads=4, dtype=torch.bfloat16, benchmark_bwd=False):
     assert hidden_size % num_heads == 0
     head_dim = hidden_size // num_heads
     device = 'cuda'
@@ -35,7 +35,7 @@ def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads
             max_seqlen_k=max_seqlen,
             causal=True,
         )
-        if bench_bwd:
+        if benchmark_bwd:
             torch.autograd.backward(o, vo_grad)
 
     torch.cuda.synchronize()
@@ -54,7 +54,7 @@ def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads
             max_seqlen_k=max_seqlen,
             causal=True,
         )
-        if bench_bwd:
+        if benchmark_bwd:
             torch.autograd.backward(o, vo_grad)
 
     end_event.record()
@@ -68,7 +68,7 @@ def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads
 
 if __name__ == "__main__":
     for gqa in [1, 2]:
-        for bench_bwd in [True]:
+        for benchmark_bwd in [True]:
             for n in [40]:
                 for Ss in [32768, 66536]:
                     Ss = [Ss]
@@ -78,13 +78,13 @@ if __name__ == "__main__":
                     # for causal
                     K = 0.5
 
-                    print(f"GQA={gqa}, bench_bwd={bench_bwd}, Ss={Ss}, heads={n}", flush=True)
+                    print(f"GQA={gqa}, benchmark_bwd={benchmark_bwd}, Ss={Ss}, heads={n}", flush=True)
                     
-                    t = benchmark_flashattn_varlen(seq_lens=Ss, hidden_size=H, num_heads=n, num_kv_heads=n_kv, bench_bwd=bench_bwd, dtype=torch.bfloat16)
+                    t = benchmark_flashattn_varlen(seq_lens=Ss, hidden_size=H, num_heads=n, num_kv_heads=n_kv, benchmark_bwd=benchmark_bwd, dtype=torch.bfloat16)
 
                     flops = 0.0
                     for S in Ss:
-                        flops += 4 * S**2 * H / 1e12 * K if not bench_bwd else 4 * S**2 * H / 1e12 * K * 3
+                        flops += 4 * S**2 * H / 1e12 * K if not benchmark_bwd else 4 * S**2 * H / 1e12 * K * 3
                     print(f"[varlen] FLOPs: {flops:.3f} TFLOPs")
                     MFU = flops / t / 312
                     print(f"[varlen] MFU: {MFU:.3f}")
