@@ -1,6 +1,6 @@
 #!/bin/bash
 
-device=2
+device=0
 export PYTHONPATH=$(pwd)
 
 # Define icons and colors

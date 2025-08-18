@@ -12,6 +12,7 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
   - [Train with FSA](#train-with-fsa)
 - [Evaluation](#evaluation)
   - [Benchmark FSA Module](#benchmark-fsa-module)
+  - [Benchmark FSA Selected Attention Module](#benchmark-fsa-selected-attention-module)
 - [Performance](#performance)
   - [Kernel Performance](#kernel-performance)
   - [End-to-end Performance](#end-to-end-performance)
@@ -116,8 +117,13 @@ Training with FSA can be esaily achieved by replacing the attention module. The 
 
 We provide detailed commands in [``test/scripts/run_unit_test.sh``](test/scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
 
+
+### Benchmark FSA Selected Attention Module
+
+The NSA selected attention module, which is the core optimizations of FSA, can be benchmarked through the commands in [``test/scripts/run_unit_test_sel_attn.sh``](test/scripts/run_unit_test_sel_attn.sh).
+
 > [!Tip]
-Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine!
+Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine! Additionally, compared to benchmarking the FSA attention module, benchmarking the FSA selected attention module usually provides a higher speedup.
 
 ## Performance
 
