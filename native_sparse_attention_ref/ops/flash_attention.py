@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from native_sparse_attention_ref.ops.triton.utils import get_num_warps_stages, is_hopper_gpu
+from native_sparse_attention_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
 
 IS_HOPPER_GPU = is_hopper_gpu()
 

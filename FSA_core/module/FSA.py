@@ -148,7 +148,6 @@ class FlashSparseAttention(torch.nn.Module):
                 q, k, v, topk_idx, self.block_size, cu_seqlens, None
             )
         
-
         # sliding window attention
         sliding_attn_output = flash_attn_varlen_func(
             q,

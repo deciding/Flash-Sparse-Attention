@@ -384,7 +384,8 @@ class Args:
         self.learning_rate = 5e-5
         self.weight_decay = 0.01
         self.warmup_steps = 100
-        self.max_length = 32768 // 2
+        # This script only shows an example for single GPU fine-tuning; therefore, the seqlen is only set at 8K 
+        self.max_length = 8192
         self.num_train_samples = 1000
         self.num_eval_samples = 200
 

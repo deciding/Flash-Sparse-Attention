@@ -1,6 +1,9 @@
 #!/bin/bash
 
+# The used GPU device id
 device=0
+# Whether to use the previous cached logs
+use_cache=false
 export PYTHONPATH=$(pwd)
 
 # Define icons and colors
@@ -42,7 +45,7 @@ compare_norms() {
 }
 
 # Main evaluation loop
-for gqa in 16; do
+for gqa in 1; do
     for seqlen in 65536; do
         for block_size in 64; do
             for topk in 16; do
@@ -52,8 +55,8 @@ for gqa in 16; do
                     echo -e "\n${BLUE}🚀 Running Configuration: seqlen=${seqlen}, block-size=${block_size}, topk=${topk}, gqa=${gqa}${NC}"
                     echo "=============================================================================="
                     
-                    # Run both use_FSA configurations
-                    for use_FSA in false true; do
+                    # Run both NSA/FSA configurations
+                    for attn_mode in NSA FSA; do
                         # Build the command
                         cmd="CUDA_VISIBLE_DEVICES=${device} python3 test/test_FSA_module.py \
                             --hidden-size 4096 \
@@ -65,19 +68,12 @@ for gqa in 16; do
                             --topk ${topk} \
                             --block-size ${block_size} \
                             --dtype bfloat16 \
+                            --attn-mode ${attn_mode}
                             --kernel-stride 16"
-                        
-                        # Add conditional flags
-                        if [[ "$use_FSA" == "true" ]]; then
-                            cmd="$cmd --use-FSA"
-                            attn_mode=FSA
-                        else
-                            attn_mode=NSA
-                        fi
                         
                         log_file="unit_test_${attn_mode}_seq${seqlen}_bs${block_size}_topk${topk}_gqa${gqa}.log"
                         
-                        if [[ -f "$log_file" ]]; then
+                        if [[ -f "$log_file" ]] && [[ "$use_cache" == "true" ]]; then
                             echo -e "${INFO} Log file already exists: $log_file"
                             echo -e "${WARN} ${YELLOW}Skipping execution for ${attn_mode} (file exists)${NC}"
                         else
@@ -96,7 +92,7 @@ for gqa in 16; do
                         cmd_bwd="$cmd --benchmark-bwd"
                         log_file_bwd="unit_test_${attn_mode}_seq${seqlen}_bs${block_size}_topk${topk}_gqa${gqa}_bwd.log"
                         
-                        if [[ -f "$log_file_bwd" ]]; then
+                        if [[ -f "$log_file_bwd" ]] && [[ "$use_cache" == "true" ]]; then
                             echo -e "${INFO} Log file already exists: $log_file"
                             echo -e "${WARN} ${YELLOW}Skipping execution for ${attn_mode} (file exists)${NC}"
                         else

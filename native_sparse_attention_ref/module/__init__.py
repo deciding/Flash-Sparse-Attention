@@ -13,13 +13,11 @@
 # limitations under the License.
 from native_sparse_attention_ref.module.native_sparse_attention import (
     NativeSparseAttention,
-    NativeSparseAttentionNoRoPE,
 )
 from native_sparse_attention_ref.module.rope import RopeConfig, RotaryEmbedding
 
 __all__ = [
     "NativeSparseAttention",
-    "NativeSparseAttentionNoRoPE",
     "RotaryEmbedding",
     "RopeConfig",
 ]

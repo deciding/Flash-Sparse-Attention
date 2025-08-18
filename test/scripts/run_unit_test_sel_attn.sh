@@ -1,3 +1,4 @@
+# The used GPU device id
 device=0
 export PYTHONPATH=$(pwd)
 

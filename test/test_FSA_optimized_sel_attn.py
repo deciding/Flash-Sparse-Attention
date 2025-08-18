@@ -9,12 +9,12 @@ from FSA_core.ops.FSA_topk_sparse_attention import (
     _topk_sparse_attention_fwd_opt,
     backward_dq_opt,
 )
-from native_sparse_attention_ref.ops.triton.topk_sparse_attention import (
+from native_sparse_attention_ref.ops.topk_sparse_attention import (
     _topk_sparse_attention_fwd,
     backward_dq,
 )
 from native_sparse_attention_ref.ops import compressed_attention, linear_compress
-from native_sparse_attention_ref.ops.triton.utils import get_num_warps_stages, is_hopper_gpu
+from native_sparse_attention_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
 IS_HOPPER_GPU = is_hopper_gpu()
 
 def create_cu_seqlens(seqlen: int) -> torch.Tensor:

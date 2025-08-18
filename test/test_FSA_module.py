@@ -1,6 +1,7 @@
 # This file is modified from the original implementation (implemented by Xunhao Lai)
 import argparse
 import torch
+from native_sparse_attention_ref.module import RopeConfig
 
 if __name__ == "__main__":
     torch.manual_seed(42)
@@ -11,7 +12,7 @@ if __name__ == "__main__":
     parser.add_argument("--kv-heads", type=int, default=-1)
     parser.add_argument("--gqa-deg", type=int, default=1)
     parser.add_argument('--topk', type=int, default=64)
-    parser.add_argument("--use-FSA", action="store_true")
+    parser.add_argument('--attn-mode', type=str, default="FSA")
     parser.add_argument("--kernel-stride", type=int, default=16)
     parser.add_argument("--nseqs", type=int, default=1)
     parser.add_argument("--block-size", type=int, default=64)
@@ -37,13 +38,11 @@ if __name__ == "__main__":
     assert q_heads % args.gqa_deg == 0
 
 
-    if args.use_FSA:
-        from FSA_core.module.FSA import FlashSparseAttention, RopeConfig
-        sparse_attn_name = "FSA"
+    if args.attn_mode == "FSA":
+        from FSA_core.module.FSA import FlashSparseAttention
         sparse_cls = FlashSparseAttention
     else:
-        from native_sparse_attention_ref.module import NativeSparseAttention, RopeConfig
-        sparse_attn_name = "NSA"
+        from native_sparse_attention_ref.module import NativeSparseAttention
         sparse_cls = NativeSparseAttention
 
     sparse_attn = (
@@ -75,13 +74,13 @@ if __name__ == "__main__":
         .cuda()
         .to(DTYPE)
     )
-    print(f"======= Num Heads: {sparse_attn_name} =======\n")
+    print(f"======= Num Heads: {args.attn_mode} =======\n")
 
     print(f"q_heads={q_heads}, kv_heads={kv_heads}\n")
 
-    print(f"======= Init Moduel: {sparse_attn_name} =======\n")
+    print(f"======= Init Moduel: {args.attn_mode} =======\n")
     for name, param in sparse_attn.named_parameters():
-        print(f"{sparse_attn_name} Parameters, {name}, shape: {param.shape}\n")
+        print(f"{args.attn_mode} Parameters, {name}, shape: {param.shape}\n")
 
     # random input
     if args.nseqs > 1:
@@ -99,7 +98,7 @@ if __name__ == "__main__":
     x = torch.randn(cu_seqlens[-1], args.hidden_size, device="cuda", dtype=DTYPE)
 
     # warmup
-    print(f"======= {sparse_attn_name} Forward & Backward Performance Test =======\n")
+    print(f"======= {args.attn_mode} Forward & Backward Performance Test =======\n")
     for i in range(4):
         y = sparse_attn(x, cu_seqlens)
         if args.benchmark_bwd:
@@ -126,9 +125,9 @@ if __name__ == "__main__":
         benchmark_mode = "Fwd+Bwd"
     else:
         benchmark_mode = "Fwd"
-    print(f"[{sparse_attn_name} E2E ({benchmark_mode})] Time: {elapsed_ms:.3f} ms\n")
+    print(f"[{args.attn_mode} E2E ({benchmark_mode})] Time: {elapsed_ms:.3f} ms\n")
 
-    print(f"======= {sparse_attn_name} Forward & Backward Output Test =======\n")
+    print(f"======= {args.attn_mode} Forward & Backward Output Test =======\n")
     y = sparse_attn(x, cu_seqlens)
     print(f"Forward, output shape: {y.shape}, output norm: {y.norm()}\n")
 
