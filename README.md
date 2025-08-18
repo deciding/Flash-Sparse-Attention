@@ -16,6 +16,26 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 
 ## Installation
 
+### Requirements: 
+The following requirements should be satisfied:
+- [PyTorch](https://pytorch.org/) >= 2.4
+- [Triton](https://github.com/openai/triton) >=3.0
+- [transformers](https://github.com/huggingface/transformers) >=4.45.0
+- [datasets](https://github.com/huggingface/datasets) >=3.3.0
+- [accelerate](https://github.com/huggingface/accelerate) >= 1.9.0
+- [flash-attn](https://github.com/Dao-AILab/flash-attention) ==2.6.3
+
+You can install dependencies for FSA with:
+```sh
+pip install -r requirements.txt
+```
+
+FSA is currently well tested with: 
+1. NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 SXM, H200 SXM);
+2. Datatype of fp16 and bf16;
+3. The same head dimension across query, key, and value. 
+
+
 ## Usage
 
 ## Performance
