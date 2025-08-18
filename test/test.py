@@ -117,7 +117,6 @@ if __name__ == "__main__":
         if args.benchmark_bwd:
             loss = (y * torch.randn_like(y)).sum(-1).mean()
             loss.backward()
-
     end_event.record()
     torch.cuda.synchronize()
 

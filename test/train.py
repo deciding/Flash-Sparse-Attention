@@ -47,7 +47,7 @@ def set_all_seeds(seed=42):
     # Enable deterministic algorithms
     torch.use_deterministic_algorithms(True, warn_only=True)
 
-class NSALlamaAttention(nn.Module):
+class SparseLlamaAttention(nn.Module):
     """Replace standard Llama attention with NSA"""
     
     def __init__(self, config, layer_idx=None, args=None):
@@ -60,12 +60,14 @@ class NSALlamaAttention(nn.Module):
         
         # Initialize FSA/NSA
         if args.attn_mode == "FSA":
-            from FSA_core.module.FSA import NativeSparseAttention, RopeConfig
+            from FSA_core.module.FSA import FlashSparseAttention, RopeConfig
+            sparse_cls = FlashSparseAttention
         else:
             from native_sparse_attention_ref.module import NativeSparseAttention, RopeConfig
+            sparse_cls = NativeSparseAttention
 
-        self.nsa = NativeSparseAttention(
-            hidden_size=config.hidden_size,
+        self.sparse_attn = sparse_cls(
+            hidden_size=self.hidden_size,
             num_q_heads=self.num_heads,
             num_kv_heads=self.num_key_value_heads,
             head_dim=128,
@@ -110,7 +112,7 @@ class NSALlamaAttention(nn.Module):
         )
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=True):
             packed_hidden_states = hidden_states.view(-1, hidden_states.size(-1))
-            attn_output = self.nsa(packed_hidden_states, cu_seqlens)
+            attn_output = self.sparse_attn(packed_hidden_states, cu_seqlens)
             # Reshape back to (batch_size, seq_len, hidden_size)
             attn_output = attn_output.view(bsz, seq_len, -1)
             
@@ -132,7 +134,7 @@ def replace_llama_attention(model, args, accelerator):
     if args.attn_mode != "FA":
         for layer_idx, layer in enumerate(model.model.layers):
             # Replace the self_attn module
-            layer.self_attn = NSALlamaAttention(
+            layer.self_attn = SparseLlamaAttention(
                 model.config, 
                 layer_idx=layer_idx,
                 args=args

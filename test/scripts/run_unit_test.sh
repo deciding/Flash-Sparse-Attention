@@ -55,7 +55,7 @@ for gqa in 1; do
                     # Run both use_FSA configurations
                     for use_FSA in false true; do
                         # Build the command
-                        cmd="CUDA_VISIBLE_DEVICES=${device} python3 test/test_nsa.py \
+                        cmd="CUDA_VISIBLE_DEVICES=${device} python3 test/test.py \
                             --hidden-size 4096 \
                             --benchmark-iters 5 \
                             --seqlens ${seqlen} \
