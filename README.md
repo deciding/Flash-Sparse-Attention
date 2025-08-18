@@ -2,7 +2,7 @@
 
 ---
 
-This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient sparse attention computation across a wide range of popular LLMs on modern GPUs.
+This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient Native Sparse Attention (NSA) across a wide range of popular LLMs on modern GPUs.
 
 - [News](#news)
 - [Features](#features)
@@ -21,18 +21,19 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 
 ## News
 
-- **$\texttt{[2025-08, upcoming]}$:** 🎈 Optimized decoding will be provided soon.
+- **$\texttt{[2025-08, upcoming]}$:** 🎈 Optimized decoding kernels will be provided soon.
 - **$\texttt{[2025-08, upcoming]}$:** 💥 Our Arxiv paper will be released soon.
 - **$\texttt{[2025-08]}$:** 🎉 Opsn sourced `Flash-Sparse-Attention`, offering an optimized implementation for NSA, broadening the applicability of this novel natively trainable sparse attention technique.
 
 ## Features
 
-FSA provides optimized kernel implementation for Native Sparse Attention (NSA) selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models, on modern high performance NVIDIA GPUs.
+FSA provides optimized kernel implementation for NSA selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models (LLMs), on modern high performance NVIDIA GPUs. For GQA group sizes larger than 8, FSA usually choose to fall back to original NSA implementation for better performance.
 
 FSA is currently well tested with: 
 - NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 SXM, H200 SXM);
 - Datatype of fp16 and bf16;
 - The same head dimension (less than or equal to 256) across query, key, and value;
+- Varied GQA group sizes, ranging from 1 to 16;
 - Training and inference (prefill).
 
 ## Installation
@@ -120,10 +121,10 @@ We provide detailed commands in [``test/scripts/run_unit_test.sh``](test/scripts
 
 ### Benchmark FSA Selected Attention Module
 
-The NSA selected attention module, which is the core optimizations of FSA, can be benchmarked through the commands in [``test/scripts/run_unit_test_sel_attn.sh``](test/scripts/run_unit_test_sel_attn.sh).
+The optimized NSA selected attention module, which is the major system bottleneck, can be benchmarked through the commands in [``test/scripts/run_unit_test_sel_attn.sh``](test/scripts/run_unit_test_sel_attn.sh).
 
 > [!Tip]
-Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine! Additionally, compared to benchmarking the FSA attention module, benchmarking the FSA selected attention module usually provides a higher speedup.
+Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine! Compared to benchmarking the FSA attention module, benchmarking the FSA selected attention module usually provides a higher speedup.
 
 ## Performance
 
@@ -135,7 +136,7 @@ Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scri
 
 ### End-to-end Performance
 
-> End-to-end training (right) and prefill (left) latency of FSA, NSA, Full Attention.
+> End-to-end training (right) and prefill (left) latency of state-of-the-art LLMs with FSA, NSA, or Full Attention.
 
 <img width="6165" height="3093" alt="e2e_githubpic" src="https://github.com/user-attachments/assets/bb2628b3-2f2a-49fe-8b29-e63027ae043d" />
 
