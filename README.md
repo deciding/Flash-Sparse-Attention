@@ -1,7 +1,6 @@
-<h1>
-  <img src="https://github.com/user-attachments/assets/c1423d38-458b-412b-9e6b-a74379a01eab" alt="logo" width="100" height="100">
-  Flash Sparse Attention (FSA)
-</h1>
+<img width="6200" height="1294" alt="github_title" src="https://github.com/user-attachments/assets/6dccb3a7-735b-4e99-bff9-3c9a31d85649" />
+
+---
 
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient sparse attention computation across a wide range of popular LLMs on modern GPUs.
 
