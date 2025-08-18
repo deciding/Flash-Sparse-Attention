@@ -16,6 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--nseqs", type=int, default=1)
     parser.add_argument("--block-size", type=int, default=64)
     parser.add_argument("--hidden-size", type=int, default=4096)
+    parser.add_argument("--benchmark-iters", type=int, default=5)
     parser.add_argument("--benchmark-bwd", action="store_true")
     parser.add_argument("--dtype",            type=str,  default="float16",
                     choices=["bfloat16", "float16", "float32"])
@@ -37,14 +38,16 @@ if __name__ == "__main__":
 
 
     if args.use_FSA:
-        from FSA_core.module.FSA import NativeSparseAttention, RopeConfig
+        from FSA_core.module.FSA import FlashSparseAttention, RopeConfig
         sparse_attn_name = "FSA"
+        sparse_cls = FlashSparseAttention
     else:
         from native_sparse_attention_ref.module import NativeSparseAttention, RopeConfig
         sparse_attn_name = "NSA"
+        sparse_cls = NativeSparseAttention
 
     sparse_attn = (
-        NativeSparseAttention(
+        sparse_cls(
             hidden_size=args.hidden_size,
             num_q_heads=q_heads,
             num_kv_heads=kv_heads,
@@ -108,7 +111,7 @@ if __name__ == "__main__":
     end_event = torch.cuda.Event(enable_timing=True)
 
     start_event.record()
-    num_iters = 4
+    num_iters = args.benchmark_iters
     for i in range(num_iters):
         y = sparse_attn(x, cu_seqlens)
         if args.benchmark_bwd:

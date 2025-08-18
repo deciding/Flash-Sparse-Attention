@@ -3,3 +3,5 @@ transformers
 datasets
 accelerate
 flash-attn==2.6.3
+torch==2.4.0
+triton==3.0.0

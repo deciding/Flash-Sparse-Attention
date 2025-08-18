@@ -11,7 +11,7 @@ from native_sparse_attention_ref.ops import (
 )
 
 
-class NativeSparseAttention(torch.nn.Module):
+class FlashSparseAttention(torch.nn.Module):
     def __init__(
         self,
         hidden_size: int,
