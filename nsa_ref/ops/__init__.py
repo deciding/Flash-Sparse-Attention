@@ -11,13 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from native_sparse_attention_ref.module.native_sparse_attention import (
-    NativeSparseAttention,
+
+from nsa_ref.ops.compressed_attention import compressed_attention
+from nsa_ref.ops.linear_compress import linear_compress
+from nsa_ref.ops.topk_sparse_attention import (
+    topk_sparse_attention,
 )
-from native_sparse_attention_ref.module.rope import RopeConfig, RotaryEmbedding
+from nsa_ref.ops.weighted_pool import (
+    avgpool_compress,
+    softmaxpool_compress,
+    weightedpool_compress,
+)
 
 __all__ = [
-    "NativeSparseAttention",
-    "RotaryEmbedding",
-    "RopeConfig",
+    "compressed_attention",
+    "topk_sparse_attention",
+    "linear_compress",
+    "avgpool_compress",
+    "weightedpool_compress",
+    "softmaxpool_compress",
 ]

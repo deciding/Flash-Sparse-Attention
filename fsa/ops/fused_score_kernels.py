@@ -6,7 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
-from native_sparse_attention_ref.ops.utils import is_hopper_gpu
+from nsa_ref.ops.utils import is_hopper_gpu
 
 IS_HOPPER_GPU = is_hopper_gpu()
 

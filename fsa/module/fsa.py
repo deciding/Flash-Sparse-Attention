@@ -3,9 +3,9 @@ import torch
 from einops import rearrange
 from flash_attn import flash_attn_varlen_func
 
-from FSA_core.ops import FSA_topk_sparse_attention
-from native_sparse_attention_ref.module.rope import RopeConfig, RotaryEmbedding
-from native_sparse_attention_ref.ops import (
+from fsa.ops import FSA_topk_sparse_attention
+from nsa_ref.module.rope import RopeConfig, RotaryEmbedding
+from nsa_ref.ops import (
     compressed_attention,
     linear_compress,
     topk_sparse_attention,

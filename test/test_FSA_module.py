@@ -1,7 +1,9 @@
 # This file is modified from the original implementation (implemented by Xunhao Lai)
 import argparse
+
 import torch
-from native_sparse_attention_ref.module import RopeConfig
+
+from nsa_ref.module import RopeConfig
 
 if __name__ == "__main__":
     torch.manual_seed(42)
@@ -19,15 +21,11 @@ if __name__ == "__main__":
     parser.add_argument("--hidden-size", type=int, default=4096)
     parser.add_argument("--benchmark-iters", type=int, default=5)
     parser.add_argument("--benchmark-bwd", action="store_true")
-    parser.add_argument("--dtype",            type=str,  default="float16",
-                    choices=["bfloat16", "float16", "float32"])
-
+    parser.add_argument("--dtype", type=str,  default="float16", choices=["bfloat16", "float16", "float32"])
 
     args = parser.parse_args()
-    DTYPE = dict(bfloat16=torch.bfloat16, float16=torch.float16,
-             float32=torch.float32)[args.dtype]
+    DTYPE = dict(bfloat16=torch.bfloat16, float16=torch.float16, float32=torch.float32)[args.dtype]
     seqlen = args.seqlen
-
 
     if args.kv_heads > 0:
         q_heads = args.kv_heads * args.gqa_deg
@@ -37,12 +35,11 @@ if __name__ == "__main__":
         kv_heads = args.heads // args.gqa_deg
     assert q_heads % args.gqa_deg == 0
 
-
     if args.attn_mode == "FSA":
-        from FSA_core.module.FSA import FlashSparseAttention
+        from fsa.module.fsa import FlashSparseAttention
         sparse_cls = FlashSparseAttention
     else:
-        from native_sparse_attention_ref.module import NativeSparseAttention
+        from nsa_ref.module import NativeSparseAttention
         sparse_cls = NativeSparseAttention
 
     sparse_attn = (

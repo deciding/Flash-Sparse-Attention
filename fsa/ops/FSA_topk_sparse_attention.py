@@ -18,8 +18,8 @@ import torch
 import triton
 import triton.language as tl
 
-from native_sparse_attention_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
-from native_sparse_attention_ref.ops.topk_sparse_attention import (
+from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
+from nsa_ref.ops.topk_sparse_attention import (
     backward_sum_o_do,
     reorder_topk_idx
 )

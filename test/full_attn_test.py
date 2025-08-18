@@ -1,9 +1,19 @@
 # This file is for benchmarking full attention (enabled by flash-attn-triton)
+from functools import partial
+
 import torch
-from native_sparse_attention_ref.ops.flash_attention import flash_attention_varlen
+
+from nsa_ref.ops.flash_attention import flash_attention_varlen
 
 
-def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads=64, num_kv_heads=4, dtype=torch.bfloat16, benchmark_bwd=False):
+def benchmark_flashattn_varlen(
+    seq_lens=[16384] * 1,
+    hidden_size=4096,
+    num_heads=64,
+    num_kv_heads=4,
+    dtype=torch.bfloat16,
+    benchmark_bwd=False
+):
     assert hidden_size % num_heads == 0
     head_dim = hidden_size // num_heads
     device = 'cuda'
@@ -23,18 +33,21 @@ def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads
 
     max_seqlen = max(seq_lens)
 
+    func = partial(
+        flash_attention_varlen,
+        q,
+        k,
+        v,
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_k=cu_seqlens,
+        max_seqlen_q=max_seqlen,
+        max_seqlen_k=max_seqlen,
+        causal=True,
+    )
+
     # warmup
     for _ in range(10):
-        o = flash_attention_varlen(
-            q,
-            k,
-            v,
-            cu_seqlens_q=cu_seqlens,
-            cu_seqlens_k=cu_seqlens,
-            max_seqlen_q=max_seqlen,
-            max_seqlen_k=max_seqlen,
-            causal=True,
-        )
+        o = func()
         if benchmark_bwd:
             torch.autograd.backward(o, vo_grad)
 
@@ -44,16 +57,7 @@ def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads
 
     start_event.record()
     for i in range(10):
-        o = flash_attention_varlen(
-            q,
-            k,
-            v,
-            cu_seqlens_q=cu_seqlens,
-            cu_seqlens_k=cu_seqlens,
-            max_seqlen_q=max_seqlen,
-            max_seqlen_k=max_seqlen,
-            causal=True,
-        )
+        o = func()
         if benchmark_bwd:
             torch.autograd.backward(o, vo_grad)
 
@@ -63,7 +67,6 @@ def benchmark_flashattn_varlen(seq_lens=[16384] * 1, hidden_size=4096, num_heads
     elapsed_ms = start_event.elapsed_time(end_event) / 10
 
     print(f"[varlen] Total tokens: {total_tokens}, Max seq: {max_seqlen}, Time: {elapsed_ms:.3f} ms")
-    return elapsed_ms / 1000  # seconds
 
 
 if __name__ == "__main__":
@@ -77,5 +80,12 @@ if __name__ == "__main__":
                     H = head_dim * n
 
                     print(f"GQA={gqa}, benchmark_bwd={benchmark_bwd}, Ss={Ss}, heads={n}", flush=True)
-                    
-                    t = benchmark_flashattn_varlen(seq_lens=Ss, hidden_size=H, num_heads=n, num_kv_heads=n_kv, benchmark_bwd=benchmark_bwd, dtype=torch.bfloat16)
+
+                    benchmark_flashattn_varlen(
+                        seq_lens=Ss,
+                        hidden_size=H,
+                        num_heads=n,
+                        num_kv_heads=n_kv,
+                        benchmark_bwd=benchmark_bwd,
+                        dtype=torch.bfloat16
+                    )

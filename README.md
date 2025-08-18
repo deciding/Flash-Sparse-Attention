@@ -29,7 +29,7 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 
 FSA provides optimized kernel implementation for NSA selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models (LLMs), on modern high performance NVIDIA GPUs. For GQA group sizes larger than 8, FSA usually choose to fall back to original NSA implementation for better performance.
 
-FSA is currently well tested with: 
+FSA is currently well tested with:
 - NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 SXM, H200 SXM);
 - Datatype of fp16 and bf16;
 - The same head dimension (less than or equal to 256) across query, key, and value;
@@ -55,10 +55,10 @@ pip install -r requirements.txt
 
 ### Instantiate FSA Module
 
-We provide [``FlashSparseAttention``](FSA_core/module/FSA.py) class for you to use, it can be used as the following example:
+We provide [``FlashSparseAttention``](fsa/module/FSA.py) class for you to use, it can be used as the following example:
 ```Python
 import torch
-from FSA_core.module.FSA import FlashSparseAttention, RopeConfig
+from fsa.module.fsa import FlashSparseAttention, RopeConfig
 
 FSA = (
     FlashSparseAttention(
@@ -106,22 +106,22 @@ loss = (y * torch.randn_like(y)).sum(-1).mean()
 loss.backward()
 ```
 
-Under the hood, the [``FSATopkSparseAttention``](FSA_core/ops/FSA_topk_sparse_attention.py) class is called, provding the optimized kernels that accelerate the NSA selected attention module.
+Under the hood, the [``FSATopkSparseAttention``](fsa/ops/FSA_topk_sparse_attention.py) class is called, provding the optimized kernels that accelerate the NSA selected attention module.
 
 ### Train with FSA
 
-Training with FSA can be esaily achieved by replacing the attention module. The only thing you may need to handle is to instantiate the FSA module, and compute the ``cu_seqlens`` for FSA. We provide an example on how to insert FSA into a LLM in [``SparseLlamaAttention``](test/train.py). 
+Training with FSA can be esaily achieved by replacing the attention module. The only thing you may need to handle is to instantiate the FSA module, and compute the ``cu_seqlens`` for FSA. We provide an example on how to insert FSA into a LLM in [``SparseLlamaAttention``](test/train.py).
 
 ## Evaluation
 
 ### Benchmark FSA Module
 
-We provide detailed commands in [``test/scripts/run_unit_test.sh``](test/scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
+We provide detailed commands in [`scripts/run_unit_test.sh``](scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
 
 
 ### Benchmark FSA Selected Attention Module
 
-The optimized NSA selected attention module, which is the major system bottleneck, can be benchmarked through the commands in [``test/scripts/run_unit_test_sel_attn.sh``](test/scripts/run_unit_test_sel_attn.sh).
+The optimized NSA selected attention module, which is the major system bottleneck, can be benchmarked through the commands in [``scripts/run_unit_test_sel_attn.sh``](scripts/run_unit_test_sel_attn.sh).
 
 > [!Tip]
 Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine! Compared to benchmarking the FSA attention module, benchmarking the FSA selected attention module usually provides a higher speedup.
@@ -130,7 +130,7 @@ Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scri
 
 ### Kernel Performance
 
-> Performance comparison of Triton-based FSA, NSA, and Full Attention (enabled by Flash Attention) kernels under various configurations. The tuple ($64$, $16$) / ($128$, $8$) represents the block size $BK$ and top-k value $Topk$, respectively. For FSA and NSA, the execution latency is composed of compressed, selected, and sliding attention; for Full Attention, the execution latency is the Flash Attention kernel execution latency. 
+> Performance comparison of Triton-based FSA, NSA, and Full Attention (enabled by Flash Attention) kernels under various configurations. The tuple ($64$, $16$) / ($128$, $8$) represents the block size $BK$ and top-k value $Topk$, respectively. For FSA and NSA, the execution latency is composed of compressed, selected, and sliding attention; for Full Attention, the execution latency is the Flash Attention kernel execution latency.
 
 <img width="4366" height="3057" alt="kernel_perf" src="https://github.com/user-attachments/assets/d1e5868e-ff4c-452f-9810-89495b7ec233" />
 
