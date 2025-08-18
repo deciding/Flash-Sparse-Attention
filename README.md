@@ -4,11 +4,13 @@
 
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient sparse attention computation across a wide range of popular LLMs on modern GPUs.
 
+- [News](#news)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Instantiate FSA Module](#instantiate-fsa-module)
   - [Train with FSA](#train-with-fsa)
+- [Evaluation](#evaluation)
   - [Benchmark FSA Module](#benchmark-fsa-module)
 - [Performance](#performance)
   - [Kernel Performance](#kernel-performance)
@@ -16,16 +18,25 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 - [Citation](#citation)
 - [Acknowledgments](#acknowledgments)
 
+## News
+
+- **$\texttt{[2025-08, upcoming]}$:** 🎈 Optimized decoding will be provided soon.
+- **$\texttt{[2025-08, upcoming]}$:** 💥 Our Arxiv paper will be released soon.
+- **$\texttt{[2025-08]}$:** 🎉 Opsn sourced `Flash-Sparse-Attention`, offering an optimized implementation for NSA, broadening the applicability of this novel natively trainable sparse attention technique.
+
 ## Features
 
-> FSA provides optimized kernel implementation for NSA selected attention module. FSA is currently well tested with: 
+FSA provides optimized kernel implementation for Native Sparse Attention (NSA) selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models, on modern high performance NVIDIA GPUs.
+
+FSA is currently well tested with: 
 - NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 SXM, H200 SXM);
 - Datatype of fp16 and bf16;
-- The same head dimension (less than or equal to 256) across query, key, and value. 
+- The same head dimension (less than or equal to 256) across query, key, and value;
+- Training and inference (prefill).
 
 ## Installation
 
-> The following requirements should be satisfied:
+The following requirements should be satisfied:
 - [PyTorch](https://pytorch.org/) >= 2.4
 - [Triton](https://github.com/openai/triton) >=3.0
 - [transformers](https://github.com/huggingface/transformers) >=4.45.0
@@ -33,7 +44,7 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 - [accelerate](https://github.com/huggingface/accelerate) >= 1.9.0
 - [flash-attn](https://github.com/Dao-AILab/flash-attention) ==2.6.3
 
-> You can install dependencies for FSA with:
+You can install dependencies for FSA with:
 ```sh
 pip install -r requirements.txt
 ```
@@ -42,7 +53,7 @@ pip install -r requirements.txt
 
 ### Instantiate FSA Module
 
-> We provide [``FlashSparseAttention``](FSA_core/module/FSA.py) class for you to use, it can be used as the following example:
+We provide [``FlashSparseAttention``](FSA_core/module/FSA.py) class for you to use, it can be used as the following example:
 ```Python
 import torch
 from FSA_core.module.FSA import FlashSparseAttention, RopeConfig
@@ -93,19 +104,20 @@ loss = (y * torch.randn_like(y)).sum(-1).mean()
 loss.backward()
 ```
 
-Under the hood, the [``FSATopkSparseAttention``](FSA_core/ops/FSA_topk_sparse_attention.py) class is called, provding the optimized kernels that accelerate the NSA selected attention module. FSA optimzied implementation is typically useful for GQA group sizes smaller than or equal to 8.
+Under the hood, the [``FSATopkSparseAttention``](FSA_core/ops/FSA_topk_sparse_attention.py) class is called, provding the optimized kernels that accelerate the NSA selected attention module.
 
 ### Train with FSA
 
-> Training with FSA can be esaily achieved by replacing the attention module. The only thing you may need to handle is to instantiate the FSA module, and compute the ``cu_seqlens`` for FSA. We provide an example on how to insert FSA into a LLM in [``SparseLlamaAttention``](test/train.py). 
+Training with FSA can be esaily achieved by replacing the attention module. The only thing you may need to handle is to instantiate the FSA module, and compute the ``cu_seqlens`` for FSA. We provide an example on how to insert FSA into a LLM in [``SparseLlamaAttention``](test/train.py). 
+
+## Evaluation
 
 ### Benchmark FSA Module
 
-> We provide detailed commands in [``test/scripts/run_unit_test.sh``](test/scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
+We provide detailed commands in [``test/scripts/run_unit_test.sh``](test/scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
 
 > [!Tip]
-> Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine!
-
+Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scripts for more comprehensive benchmarking on your machine!
 
 ## Performance
 

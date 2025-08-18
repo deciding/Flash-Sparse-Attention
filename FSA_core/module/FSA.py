@@ -8,6 +8,7 @@ from native_sparse_attention_ref.module.rope import RopeConfig, RotaryEmbedding
 from native_sparse_attention_ref.ops import (
     compressed_attention,
     linear_compress,
+    topk_sparse_attention,
 )
 
 
@@ -133,9 +134,20 @@ class FlashSparseAttention(torch.nn.Module):
 
         # topk sparse attention
         seqlens = cu_seqlens[1:] - cu_seqlens[:-1]
-        sparse_attn_output = FSA_topk_sparse_attention(
-            q, k, v, topk_idx, self.block_size, cu_seqlens, None
-        )
+        _, num_q_heads, _ = q.shape
+        _, num_k_heads, _ = k.shape
+        gqa_group_size = num_q_heads // num_k_heads
+
+        # TODO: fine-grained fall back mechanism will be integrated into kernels
+        if gqa_group_size <=8:
+            sparse_attn_output = FSA_topk_sparse_attention(
+                q, k, v, topk_idx, self.block_size, cu_seqlens, None
+            )
+        else:
+            sparse_attn_output = topk_sparse_attention(
+                q, k, v, topk_idx, self.block_size, cu_seqlens, None
+            )
+        
 
         # sliding window attention
         sliding_attn_output = flash_attn_varlen_func(

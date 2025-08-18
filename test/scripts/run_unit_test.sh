@@ -1,6 +1,6 @@
 #!/bin/bash
 
-device=0
+device=2
 export PYTHONPATH=$(pwd)
 
 # Define icons and colors
@@ -42,7 +42,7 @@ compare_norms() {
 }
 
 # Main evaluation loop
-for gqa in 1; do
+for gqa in 16; do
     for seqlen in 65536; do
         for block_size in 64; do
             for topk in 16; do
@@ -55,7 +55,7 @@ for gqa in 1; do
                     # Run both use_FSA configurations
                     for use_FSA in false true; do
                         # Build the command
-                        cmd="CUDA_VISIBLE_DEVICES=${device} python3 test/test.py \
+                        cmd="CUDA_VISIBLE_DEVICES=${device} python3 test/test_FSA_module.py \
                             --hidden-size 4096 \
                             --benchmark-iters 5 \
                             --seqlens ${seqlen} \
