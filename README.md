@@ -24,17 +24,13 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 
 > Performance comparison of Triton-based FSA, NSA, and Full Attention (enabled by Flash Attention) kernels under various configurations. The tuple ($64$, $16$) / ($128$, $8$) represents the block size $BK$ and top-k value $Topk$, respectively.
 
-<img width="5120" height="3584" alt="e2e_github" src="https://github.com/user-attachments/assets/561c2bbe-b783-4a2e-9cfc-eac2f5d1221b" />
+<img width="4366" height="3057" alt="kernel_perf" src="https://github.com/user-attachments/assets/d1e5868e-ff4c-452f-9810-89495b7ec233" />
 
-### End-to-end Training Performance
+### End-to-end Performance
 
-> End-to-end training latency of FSA, NSA, Full Attention.
+> End-to-end training (right) and prefill (left) latency of FSA, NSA, Full Attention.
 
-<img width="3072" height="3072" alt="e2e_training_github" src="https://github.com/user-attachments/assets/2b78d490-95c5-4331-a7e9-36ffec408b57" />
-
-> Loss comparison between FSA, NSA, and Full Attention in end-to-end Llama3-8B model training.
-
-<img width="3072" height="1024" alt="loss_compare" src="https://github.com/user-attachments/assets/7cfbba84-2808-4edd-acc1-f71cdaf75ca2" />
+<img width="6165" height="3093" alt="e2e_githubpic" src="https://github.com/user-attachments/assets/bb2628b3-2f2a-49fe-8b29-e63027ae043d" />
 
 
 ## Citation
