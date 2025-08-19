@@ -116,7 +116,7 @@ Training with FSA can be esaily achieved by replacing the attention module. The 
 
 ### Benchmark FSA Module
 
-We provide detailed commands in [`scripts/run_unit_test.sh``](scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
+We provide detailed commands in [`scripts/run_unit_test.sh`](scripts/run_unit_test.sh) for convenient benchmarking of FSA module. The benchmarking provides correctness comparison of forward and backward outputs, performance comparison, and memory usage comparison.
 
 
 ### Benchmark FSA Selected Attention Module
