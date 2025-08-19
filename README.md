@@ -147,7 +147,7 @@ Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scri
 @misc{Yan2025FSA,
   title={Flash Sparse Attention: More Efficient Natively Trainable Sparse Attention},
   author={Yan, Ran and Jiang, Youhe and Yuan, Binhang},
-  howpublished = {\url{https://github.com/ranyangit/Flash-Sparse-Attention}},
+  howpublished = {\url{https://github.com/Relaxed-System-Lab/Flash-Sparse-Attention}},
   year={2025}
 }
 ```
