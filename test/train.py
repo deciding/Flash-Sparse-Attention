@@ -192,11 +192,11 @@ class ArxivPapersDataset(Dataset):
             max_length=self.max_length,
             return_tensors="pt"
         )
+        mask = encoding["attention_mask"].squeeze()
 
         return {
-            "input_ids": encoding["input_ids"].squeeze(),
-            "attention_mask": encoding["attention_mask"].squeeze(),
-            "labels": encoding["input_ids"].squeeze()  # For causal LM
+            "input_ids": encoding["input_ids"].squeeze()[mask],
+            "labels": encoding["input_ids"].squeeze()[mask]  # For causal LM
         }
 
 
@@ -204,7 +204,6 @@ def collate_fn(batch):
     """Custom collate function"""
     return {
         "input_ids": torch.stack([item["input_ids"] for item in batch]),
-        "attention_mask": torch.stack([item["attention_mask"] for item in batch]),
         "labels": torch.stack([item["labels"] for item in batch])
     }
 
@@ -214,6 +213,8 @@ def train_nsa_llama():
 
     # Initialize arguments
     args = Args()
+
+    assert args.batch_size == 1, "This example script only allows one sequence."
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -378,6 +379,7 @@ class Args:
         # Training args
         self.output_dir = "./nsa_llama_training"
         self.num_epochs = 3
+        # Batch size must be 1 to use sequence packing
         self.batch_size = 1
         self.gradient_accumulation_steps = 1
         self.learning_rate = 5e-5
