@@ -500,3 +500,4 @@ def linear_compress(
         bias = einsum(pe, w, "h D, h D d -> h d")
         y = y + bias.unsqueeze(0)
     return y, y_cu_seqlens
+

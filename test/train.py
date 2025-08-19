@@ -374,7 +374,7 @@ class Args:
         self.kernel_stride = 16
         self.block_size = 64
         self.topk = 16
-        self.attn_mode = "FSA"  # choose in ["FSA", "NSA", "FA"]
+        self.attn_mode = "NSA"  # choose in ["FSA", "NSA", "FA"]
 
         # Training args
         self.output_dir = "./nsa_llama_training"
