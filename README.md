@@ -5,6 +5,7 @@
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient Native Sparse Attention (NSA) across a wide range of popular LLMs on modern GPUs.
 
 - [News](#news)
+- [Advantages](#advantages)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -25,9 +26,18 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 - **$\texttt{[2025-08, upcoming]}$:** 💥 Our Arxiv paper will be released soon.
 - **$\texttt{[2025-08]}$:** 🎉 Opsn sourced `Flash-Sparse-Attention`, offering an optimized implementation for NSA, broadening the applicability of this novel natively trainable sparse attention technique.
 
+## Advantages
+
+🚀 The speedup of FSA originates from significantly lowered kernel-level memory access volume and computations.
+
+The kernel method for the selected attention module introduced in [NSA paper](https://arxiv.org/abs/2502.11089) batches query heads that share the same key-value head. When the GQA group size is not sufficiently large, NSA must pad query heads to meet hardware or software requirements, leading to unnecessary memory access and computation for the padded data. In contrast, the kernel method in FSA avoids the additional memory access and computation via two kernels: (i) the first kernel batches query tokens that attend to the same KV block and stores the partial results to a buffer, (ii) the second kernel accumulates attention results for each query token.
+
+Under varied GQA group sizes and NSA hyperparameters (block size $BK$ and topk-k value $Topk$), the memory access volume and number of floating-point operations ratio comparisons between NSA and our method are as follows:
+<img width="6144" height="2252" alt="mem_flops_cmp" src="https://github.com/user-attachments/assets/273cbd9d-6bbd-461c-a516-5d0c0f568190" />
+
 ## Features
 
-FSA provides optimized kernel implementation for NSA selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models (LLMs), on modern high performance NVIDIA GPUs. For GQA group sizes larger than 8, FSA usually choose to fall back to original NSA implementation for better performance.
+FSA provides an optimized kernel implementation for NSA selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models (LLMs), on modern high-performance NVIDIA GPUs. For GQA group sizes larger than 8, FSA usually chooses to fall back to the original NSA implementation for better performance.
 
 FSA is currently well tested with:
 - NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 SXM, H200 SXM);
