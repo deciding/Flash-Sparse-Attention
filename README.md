@@ -33,7 +33,8 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 The kernel method for the selected attention module introduced in [NSA paper](https://arxiv.org/abs/2502.11089) batches query heads that share the same key-value head. When the GQA group size is not sufficiently large, NSA must pad query heads to meet hardware or software requirements, leading to unnecessary memory access and computation for the padded data. In contrast, the kernel method in FSA avoids the additional memory access and computation via two kernels: (i) the first kernel batches query tokens that attend to the same KV block and stores the partial results to a buffer, (ii) the second kernel accumulates attention results for each query token.
 
 Under varied GQA group sizes and NSA hyperparameters (block size $BK$ and topk-k value $Topk$), the memory access volume and number of floating-point operations ratio comparisons between NSA and our method are as follows:
-<img width="6144" height="2252" alt="mem_flops_cmp" src="https://github.com/user-attachments/assets/273cbd9d-6bbd-461c-a516-5d0c0f568190" />
+<img width="6144" height="2252" alt="new_figure" src="https://github.com/user-attachments/assets/04e4462d-f2b4-4a63-abb0-1ad59d39e497" />
+
 
 ## Features
 
