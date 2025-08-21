@@ -5,6 +5,7 @@
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient Native Sparse Attention (NSA) across a wide range of popular LLMs on modern GPUs.
 
 - [News](#news)
+- [Method](#method)
 - [Advantages](#advantages)
 - [Features](#features)
 - [Installation](#installation)
@@ -22,15 +23,25 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 
 ## News
 
-- **$\texttt{[2025-08, upcoming]}$:** 🎈 Optimized decoding kernels will be provided soon.
 - **$\texttt{[2025-08, upcoming]}$:** 💥 Our Arxiv paper will be released soon.
-- **$\texttt{[2025-08]}$:** 🎉 Opsn sourced `Flash-Sparse-Attention`, offering an optimized implementation for NSA, broadening the applicability of this novel natively trainable sparse attention technique.
+- **$\texttt{[2025-08]}$:** 🎈 Beta version of one-step decoding is released, check the code residing in [`fsa_preview`](fsa_preview).
+- **$\texttt{[2025-08]}$:** 🎉 Open sourced `Flash-Sparse-Attention`, offering an optimized implementation for NSA, broadening the applicability of this novel natively trainable sparse attention technique.
+
+## Method
+
+For NSA selected attention module, the major system bottleneck, FSA decouples the computation into two major kernels: (i) the main kernel batches query tokens that attend to the same KV block and stores the partial results to a buffer, (ii) the reduction kernel accumulates attention results for each query token. The key insight behind this arrangement is to allow more efficient computation hardware, while avoiding `atomic` additions for accumulating attention results for each query token across KV blocks.
+
+For FSA main kernel, the concrete computation process can be visualized as follows:
+<img width="4679" height="3626" alt="FSA_main_kernel" src="https://github.com/user-attachments/assets/cfe8bda2-75ed-42b8-8e69-8635b3fe95c7" />
+
+In the example in the above figure, a single query head processes two non-contiguous query tokens that both attend to the same KV block. These tokens are batched together and loaded into GPU shared memory. The corresponding KV block is then loaded from its associated key-value head. Following the attention computations with the KV block, the results are stored in the output buffer using an index mapping tensor. This index mapping mechanism serves two key purposes: it enables contiguous storage of outputs while simultaneously reducing buffer memory overhead.
+
 
 ## Advantages
 
 🚀 The speedup of FSA originates from significantly lowered kernel-level memory access volume and computations.
 
-The kernel method for the selected attention module introduced in [NSA paper](https://arxiv.org/abs/2502.11089) batches query heads that share the same key-value head. When the GQA group size is not sufficiently large, NSA must pad query heads to meet hardware or software requirements, leading to unnecessary memory access and computation for the padded data. In contrast, the kernel method in FSA avoids the additional memory access and computation via two kernels: (i) the first kernel batches query tokens that attend to the same KV block and stores the partial results to a buffer, (ii) the second kernel accumulates attention results for each query token.
+The kernel method for the selected attention module introduced in [NSA paper](https://arxiv.org/abs/2502.11089) batches query heads that share the same key-value head. When the GQA group size is not sufficiently large, NSA must pad query heads to meet hardware or software requirements, leading to unnecessary memory access and computation for the padded data. In contrast, the kernel method in FSA avoids the additional memory access and computation.
 
 Under varied GQA group sizes and NSA hyperparameters (block size $BK$ and topk-k value $Topk$), the memory access volume and number of floating-point operations ratio comparisons between NSA and our method are as follows:
 <img width="6144" height="2252" alt="new_figure" src="https://github.com/user-attachments/assets/04e4462d-f2b4-4a63-abb0-1ad59d39e497" />
