@@ -14,14 +14,9 @@
 
 from nsa_ref.ops.compressed_attention import compressed_attention
 from nsa_ref.ops.linear_compress import linear_compress
-from nsa_ref.ops.topk_sparse_attention import (
-    topk_sparse_attention,
-)
-from nsa_ref.ops.weighted_pool import (
-    avgpool_compress,
-    softmaxpool_compress,
-    weightedpool_compress,
-)
+from nsa_ref.ops.topk_sparse_attention import topk_sparse_attention
+from nsa_ref.ops.weighted_pool import (avgpool_compress, softmaxpool_compress,
+                                       weightedpool_compress)
 
 __all__ = [
     "compressed_attention",

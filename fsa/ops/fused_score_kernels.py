@@ -182,10 +182,10 @@ def _fused_attention_score_and_transform(
 
     num_offs = int(offs.shape[0])
     for i in range(cu_seqlens_q.shape[0] - 1):
-        q_seq = q[cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        k_seq = k[cu_seqlens_k[i] : cu_seqlens_k[i + 1]]
-        lse_seq = lse[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        block_scores_seq = block_scores[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
+        q_seq = q[cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        k_seq = k[cu_seqlens_k[i]: cu_seqlens_k[i + 1]]
+        lse_seq = lse[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        block_scores_seq = block_scores[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
 
         _fused_attention_score_and_transform_per_seq(
             q_seq,
@@ -197,15 +197,15 @@ def _fused_attention_score_and_transform(
             block_size,
             offs,
             num_offs,
-            cu_seqlens_q[i : i + 2] - cu_seqlens_q[i],
-            cu_seqlens_k[i : i + 2] - cu_seqlens_k[i],
+            cu_seqlens_q[i: i + 2] - cu_seqlens_q[i],
+            cu_seqlens_k[i: i + 2] - cu_seqlens_k[i],
             cu_seqlens_q[i + 1] - cu_seqlens_q[i],
             cu_seqlens_k[i + 1] - cu_seqlens_k[i],
             sm_scale,
             init_blocks,
             local_blocks,
         )
-        block_scores[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]] = block_scores_seq
+        block_scores[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]] = block_scores_seq
     return block_scores
 
 

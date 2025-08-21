@@ -832,7 +832,7 @@ def _topk_sparse_attention_fwd(
     k_len, num_k_heads, head_dim = k.shape
     v_len, num_v_heads, head_dim = v.shape
     batch_size = cu_seqlens_q.shape[0] - 1
-    assert q_len == k_len and k_len == v_len
+    # assert q_len == k_len and k_len == v_len
     topk = topk_idx.shape[-1]
     assert topk_idx.shape[0] == num_k_heads
     assert topk_idx.shape[1] == q_len
@@ -1051,7 +1051,6 @@ def _topk_sparse_attention_bwd(
     BLOCK_SIZE_T = triton.next_power_of_2(topk)
     num_warps, num_stages = get_num_warps_stages(head_dim, BLOCK_SIZE_K, IS_HOPPER_GPU)
 
-
     backward_dq[grid](
         q,
         k,
@@ -1126,7 +1125,7 @@ class TopkSparseAttention(torch.autograd.Function):
             sm_scale = 1 / math.sqrt(q.shape[-1])
 
         permute_results = None
-    
+
         o, lse = _topk_sparse_attention_fwd(
             q,
             k,

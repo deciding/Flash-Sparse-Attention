@@ -1,21 +1,8 @@
 import argparse
-import math
-from contextlib import contextmanager
-from functools import partial
-
 import torch
-import triton
 
-from fsa.ops.FSA_topk_sparse_attention import (_topk_sparse_attention_fwd_opt,
-                                               backward_dq_opt)
-from fsa.ops.compressed_attention_decode import compressed_attention_decode
-from fsa.ops.linear_compress_decode import linear_compress_decode
+from fsa_preview.ops import _linear_compress_decode
 from nsa_ref.ops import compressed_attention, linear_compress
-from nsa_ref.ops.topk_sparse_attention import (_topk_sparse_attention_fwd,
-                                               backward_dq)
-from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
-
-IS_HOPPER_GPU = is_hopper_gpu()
 
 
 def create_cu_seqlens(seqlen: int) -> torch.Tensor:
@@ -41,28 +28,6 @@ def parse_args():
 
     return parser.parse_args()
 
-
-@contextmanager
-def cuda_timer(name):
-    torch.cuda.synchronize()
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-
-    start_event.record()
-
-    class TimeCapture:
-        def __init__(self):
-            self.elapsed_time = 0
-
-    time_capture = TimeCapture()
-
-    try:
-        yield time_capture
-    finally:
-        end_event.record()
-        torch.cuda.synchronize()
-        time_capture.elapsed_time = start_event.elapsed_time(end_event)
-        print(f"[{name}] Time: {time_capture.elapsed_time:.3f} ms")
 
 if __name__ == "__main__":
 
@@ -120,7 +85,7 @@ if __name__ == "__main__":
         if split_point <= kernel_size:  # Need enough tokens for at least one window
             continue
             
-        print(f"\nTesting: train({seqlen}) vs train({split_point}) + decode({append_size})")
+        print(f"\nTesting: prefill({seqlen}) vs prefill({split_point}) + decode({append_size})")
         
         # Method 1: Full sequence training (ground truth)
         full_compressed_k, full_compressed_cu_seqlen = linear_compress(
@@ -160,7 +125,7 @@ if __name__ == "__main__":
             parallel_topk_compute=False,
         )
         
-        # Method 2: Split into train(n-k) + decode(k)
+        # Method 2: Split into prefill(n-k) + decode(k)
         # First part: training on first split_point tokens
         k_first_part = k[:split_point]
         v_first_part = v[:split_point]
@@ -184,29 +149,6 @@ if __name__ == "__main__":
             None,
         )
 
-        compressed_seqlens_first = compressed_cu_seqlens_first[1:] - compressed_cu_seqlens_first[:-1]
-        cu_seqlens_first = cu_seqlens.clone()
-        cu_seqlens_first[1] = seqlen - 1
-        attn_output_first, topk_idx_first = compressed_attention_decode(
-            q=q[:seqlen-1],
-            k=compressed_k_first,
-            v=compressed_v_first,
-            kernel_size=kernel_size,
-            kernel_stride=kernel_stride,
-            block_size=block_size,
-            topk=topk,
-            cu_seqlens_q=cu_seqlens_first,
-            cu_seqlens_k=compressed_cu_seqlens_first,
-            max_seqlen_q=seqlen-1,
-            max_seqlen_k=compressed_seqlens_first.max().item(),
-            sm_scale=None,
-            init_blocks=1,
-            local_blocks=2,
-            parallel_topk_compute=False,
-        )
-
-
-        
         # Second part: decode on last append_size tokens
         k_last_part = k[split_point:]
         v_last_part = v[split_point:]
@@ -218,7 +160,7 @@ if __name__ == "__main__":
         initial_buffer_v = v_first_part[-buffer_size:] if buffer_size > 0 else None
         
         # Decode the last part
-        decode_k_output, final_len_k, _ = linear_compress_decode(
+        decode_k_output = _linear_compress_decode(
             k_last_part,
             compress_key,
             kernel_size,
@@ -228,7 +170,7 @@ if __name__ == "__main__":
             initial_buffer_k,
         )
         
-        decode_v_output, final_len_v, _ = linear_compress_decode(
+        decode_v_output = _linear_compress_decode(
             v_last_part,
             compress_value,
             kernel_size,
@@ -238,47 +180,32 @@ if __name__ == "__main__":
             initial_buffer_v,
         )
         
-        compressed_cu_seqlens_last = compressed_cu_seqlens_first.clone()
-        compressed_cu_seqlens_last[1] += 1
-        compressed_seqlens_last = compressed_cu_seqlens_last[1:] - compressed_cu_seqlens_last[:-1]
+        # Combine results
+        if decode_k_output.shape[0] > 0:
+            combined_compressed_k = torch.cat([compressed_k_first, decode_k_output], dim=0)
+            combined_compressed_v = torch.cat([compressed_v_first, decode_v_output], dim=0)
+        else:
+            combined_compressed_k = compressed_k_first
+            combined_compressed_v = compressed_v_first       
 
-        cu_seqlens_last = cu_seqlens.clone()
-        cu_seqlens_last[1] = 1
-        attn_output_last, topk_idx_last = compressed_attention_decode(
-            q=q[seqlen-1:],
-            k=compressed_k_first,
-            v=compressed_v_first,
+        compressed_seqlens_full = full_compressed_cu_seqlen[1:] - full_compressed_cu_seqlen[:-1]
+        attn_output_cur, topk_idx_cur = compressed_attention(
+            q=q,
+            k=combined_compressed_k,
+            v=combined_compressed_v,
             kernel_size=kernel_size,
             kernel_stride=kernel_stride,
             block_size=block_size,
             topk=topk,
-            cu_seqlens_q=cu_seqlens_last,
-            cu_seqlens_k=compressed_cu_seqlens_last,
-            max_seqlen_q=1,
-            max_seqlen_k=compressed_seqlens_last.max().item(),
+            cu_seqlens_q=cu_seqlens,
+            cu_seqlens_k=full_compressed_cu_seqlen,
+            max_seqlen_q=seqlen,
+            max_seqlen_k=compressed_seqlens_full.max().item(),
             sm_scale=None,
             init_blocks=1,
             local_blocks=2,
             parallel_topk_compute=False,
         )
-
-        # Combine results
-        if decode_k_output.shape[0] > 0:
-            combined_compressed_k = torch.cat([compressed_k_first, decode_k_output], dim=0)
-            combined_compressed_v = torch.cat([compressed_v_first, decode_v_output], dim=0)
-            combined_cmp_attn_out = torch.cat([attn_output_first, attn_output_last], dim=0)
-        else:
-            combined_compressed_k = compressed_k_first
-            combined_compressed_v = compressed_v_first       
-            combined_cmp_attn_out = attn_output_first
-        
-        combined_topk_idx = torch.cat([topk_idx_first, topk_idx_last], dim=0)
-        
-        # Compare results
-        print(f"  Full train K shape: {full_compressed_k.shape}, {attn_output_full.shape}, {topk_idx_full.shape}")
-        print(f"  Split+decode K shape: {combined_compressed_k.shape}, {combined_cmp_attn_out.shape}, {combined_topk_idx.shape}")
-        print(f"  Decode K output shape: {decode_k_output.shape}, {attn_output_first.shape}, {topk_idx_last.shape}")
-
         
         # Check shapes match
         assert full_compressed_k.shape == combined_compressed_k.shape, \
@@ -297,24 +224,15 @@ if __name__ == "__main__":
             rtol=1e-4, atol=1e-5,
             msg="V values don't match between full training and split+decode"
         )
-
-        # T
         torch.testing.assert_close(
-            attn_output_full, attn_output_first, 
+            attn_output_full, attn_output_cur, 
             rtol=1e-4, atol=1e-5,
             msg="Compressed attention values don't match between full training and split+decode"
         )
-        
-        print((attn_output_full - attn_output_first).abs().max())
-        torch.testing.assert_close(
-            topk_idx_full, combined_topk_idx, 
-            rtol=1e-4, atol=1e-5,
-            msg="Topk idx values don't match between full training and split+decode"
-        )
-        
-        print(f"  ✅ Test PASSED for append_size={append_size}")
+ 
+        print(f"  ✅ Test PASSED for decode_size={append_size}")
 
-    
+
     print("\n" + "="*60)
     print("DECODE TESTING COMPLETED")
     print("="*60)

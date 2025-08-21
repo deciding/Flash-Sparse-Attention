@@ -11,19 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific
 import math
-
 from typing import Any, Optional
 
 import torch
 import triton
 import triton.language as tl
 
+from nsa_ref.ops.topk_sparse_attention import (backward_sum_o_do,
+                                               reorder_topk_idx)
 from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
-from nsa_ref.ops.topk_sparse_attention import (
-    backward_sum_o_do,
-    reorder_topk_idx
-)
-
 
 IS_HOPPER_GPU = is_hopper_gpu()
 
@@ -358,7 +354,7 @@ def qk_kernel(
                     st_offs = start_id + (pid_q_j * BLOCK_SIZE_Q + tl.arange(0, BLOCK_SIZE_Q))
                     # st should be in shape [BLOCK_SIZE_Q]
                     st_mask = (pid_q_j * BLOCK_SIZE_Q + tl.arange(0, BLOCK_SIZE_Q)) < valid_tokens
-                    
+
                     st = tl.load(selected_tokens_ptr + st_offs, mask=st_mask, other=-1)
                     # otherwise, st selects a set of q tokens, selected_tokens_ptr should be sorted
                     q_ptrs_off = st[:, None] * stride_qn + off_d[None, :] * stride_qd
@@ -592,15 +588,15 @@ def _topk_sparse_attention_fwd_opt(
 
     permute_results = []
     for i in range(len(cu_seqlens_q) - 1):
-        cu_seqlens_q_ = cu_seqlens_q[i : i + 2] - cu_seqlens_q[i]
-        cu_seqlens_k_ = cu_seqlens_k[i : i + 2] - cu_seqlens_k[i]
+        cu_seqlens_q_ = cu_seqlens_q[i: i + 2] - cu_seqlens_q[i]
+        cu_seqlens_k_ = cu_seqlens_k[i: i + 2] - cu_seqlens_k[i]
         max_seqlen_q_ = cu_seqlens_q_[1] - cu_seqlens_q_[0]
         max_seqlen_k_ = cu_seqlens_k_[1] - cu_seqlens_k_[0]
 
-        q_ = q[cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        k_ = k[cu_seqlens_k[i] : cu_seqlens_k[i + 1]]
-        v_ = v[cu_seqlens_k[i] : cu_seqlens_k[i + 1]]
-        topk_idx_ = topk_idx[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
+        q_ = q[cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        k_ = k[cu_seqlens_k[i]: cu_seqlens_k[i + 1]]
+        v_ = v[cu_seqlens_k[i]: cu_seqlens_k[i + 1]]
+        topk_idx_ = topk_idx[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
         o_seq, lse_seq, permute_results_seq = _topk_sparse_attention_fwd_opt_per_seq(
             q_,
             k_,
@@ -614,9 +610,9 @@ def _topk_sparse_attention_fwd_opt(
             sm_scale,
             causal,
         )
-        o[cu_seqlens_q[i] : cu_seqlens_q[i + 1]] = o_seq
+        o[cu_seqlens_q[i]: cu_seqlens_q[i + 1]] = o_seq
 
-        lse[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]] = lse_seq
+        lse[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]] = lse_seq
         permute_results.append(permute_results_seq)
 
     return o, lse, permute_results
@@ -929,7 +925,7 @@ def _topk_sparse_attention_fwd_opt_per_seq(
     assert cu_seqlens_q.dtype == torch.int32 and cu_seqlens_k.dtype == torch.int32
     assert block_size in {32, 64, 128, 256}
     # shape
-    
+
     total_len, num_heads, head_dim = q.shape
     total_len, num_kv_heads, head_dim = k.shape
 
@@ -953,10 +949,10 @@ def _topk_sparse_attention_fwd_opt_per_seq(
         device=q.device,
     )
     for h in range(num_kv_heads):
-        topk_idx_tile = topk_idx[h * head_tile : (h + 1) * head_tile]
+        topk_idx_tile = topk_idx[h * head_tile: (h + 1) * head_tile]
         topk_idx_nonneg = topk_idx_tile[topk_idx_tile >= 0]
         valid_lens = torch.bincount(topk_idx_nonneg.view(-1), minlength=num_blocks)
-        valid_lens_all[h * head_tile : (h + 1) * head_tile] = valid_lens
+        valid_lens_all[h * head_tile: (h + 1) * head_tile] = valid_lens
 
     global_max_valid_tokens = valid_lens_all[:, 1:].max() if num_blocks > 1 else valid_lens_all.max()
 
@@ -1001,16 +997,16 @@ def _topk_sparse_attention_fwd_opt_per_seq(
     permute_results['valid_start_indices'] = []
 
     for h in range(num_heads // head_tile):
-        q_tile = q[:, h * head_tile : (h + 1) * head_tile]
-        k_tile = k[:, (h // gqa_deg) * head_tile : ((h // gqa_deg + 1)) * head_tile]
-        v_tile = v[:, (h // gqa_deg) * head_tile : ((h // gqa_deg + 1)) * head_tile]
-        o = o_full[:, h * head_tile : (h + 1) * head_tile]
-        lse = lse_full[h * head_tile : (h + 1) * head_tile]
+        q_tile = q[:, h * head_tile: (h + 1) * head_tile]
+        k_tile = k[:, (h // gqa_deg) * head_tile: ((h // gqa_deg + 1)) * head_tile]
+        v_tile = v[:, (h // gqa_deg) * head_tile: ((h // gqa_deg + 1)) * head_tile]
+        o = o_full[:, h * head_tile: (h + 1) * head_tile]
+        lse = lse_full[h * head_tile: (h + 1) * head_tile]
 
         permute_min_block_id = 0
         permute_max_block_id = min(permute_min_block_id + num_blocks, num_blocks)
 
-        topk_idx_tile = topk_idx[(h // gqa_deg) * head_tile : ((h // gqa_deg + 1)) * head_tile]
+        topk_idx_tile = topk_idx[(h // gqa_deg) * head_tile: ((h // gqa_deg + 1)) * head_tile]
 
         if h % gqa_deg == 0:
             topk_idx_permuted_tile = build_block_to_token_triton(
@@ -1024,7 +1020,7 @@ def _topk_sparse_attention_fwd_opt_per_seq(
             index_mapping(
                 token_index_mapping, valid_topk_idx_permuted_tile, valid_lens, valid_start_indices, num_blocks
             )
-            
+
             permute_results['valid_topk_idx_permuted_tile'].append(valid_topk_idx_permuted_tile)
             permute_results['valid_lens'].append(valid_lens)
             permute_results['valid_start_indices'].append(valid_start_indices)
@@ -1046,7 +1042,7 @@ def _topk_sparse_attention_fwd_opt_per_seq(
                 cu_seqlens_q,
                 cu_seqlens_k,
             )
-            
+
             m_ij_tiles[:, :, :] = m_ij_tiles[:, :, 0][:, :, None]
             m_ij_last[:, :] = m_ij_last[:, 0]
         for compute_min_block_id in range(min(2, num_blocks)):
@@ -1066,7 +1062,7 @@ def _topk_sparse_attention_fwd_opt_per_seq(
                 l_ij = l_ij_rest
                 acc_o_scales = acc_o_scales_rest
                 compute_tile_size = num_blocks - 1
-            
+
             # launch kernel
             qkv_kernel(
                 q_tile,
@@ -1111,8 +1107,8 @@ def _topk_sparse_attention_fwd_opt_per_seq(
             head_dim,
         )
 
-        o_full[:, h * head_tile : (h + 1) * head_tile] = o
-        lse_full[h * head_tile : (h + 1) * head_tile] = lse
+        o_full[:, h * head_tile: (h + 1) * head_tile] = o
+        lse_full[h * head_tile: (h + 1) * head_tile] = lse
 
         if h % gqa_deg == 0:
             fused_fill(topk_idx_permuted_tile, m_i_cur_tiles)
@@ -1201,7 +1197,7 @@ def dq_compute_kernel(
     v = tl.load(tl.advance(v_ptrs, (0, c)), boundary_check=(0, 1), padding_option="zero")
 
     qk_scale = sm_scale * 1.44269504
-    
+
     off_k = tl.arange(0, BLOCK_SIZE_K)
     off_d = tl.arange(0, BLOCK_SIZE_D)
     for j in range(num_dq_blocks):
@@ -1348,19 +1344,19 @@ def backward_dq_opt(
         TODO: Currently sequence packing is explicitly done in for loop, will merge in kernels.
     """
     for i in range(len(cu_seqlens_q) - 1):
-        cu_seqlens_q_ = cu_seqlens_q[i : i + 2] - cu_seqlens_q[i]
-        cu_seqlens_k_ = cu_seqlens_k[i : i + 2] - cu_seqlens_k[i]
+        cu_seqlens_q_ = cu_seqlens_q[i: i + 2] - cu_seqlens_q[i]
+        cu_seqlens_k_ = cu_seqlens_k[i: i + 2] - cu_seqlens_k[i]
 
         permute_results_ = permute_results[i]
 
-        q_ = q[cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        k_ = k[cu_seqlens_k[i] : cu_seqlens_k[i + 1]]
-        v_ = v[cu_seqlens_k[i] : cu_seqlens_k[i + 1]]
-        topk_idx_ = topk_idx[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        lse_ = lse[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        delta_ = delta[:, cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        do_ = do[cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
-        dq_ = dq[cu_seqlens_q[i] : cu_seqlens_q[i + 1]]
+        q_ = q[cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        k_ = k[cu_seqlens_k[i]: cu_seqlens_k[i + 1]]
+        v_ = v[cu_seqlens_k[i]: cu_seqlens_k[i + 1]]
+        topk_idx_ = topk_idx[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        lse_ = lse[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        delta_ = delta[:, cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        do_ = do[cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
+        dq_ = dq[cu_seqlens_q[i]: cu_seqlens_q[i + 1]]
 
         backward_dq_opt_per_seq(
             q_,
@@ -1382,7 +1378,7 @@ def backward_dq_opt(
             permute_results_,
         )
 
-        dq[cu_seqlens_q[i] : cu_seqlens_q[i + 1]] = dq_
+        dq[cu_seqlens_q[i]: cu_seqlens_q[i + 1]] = dq_
 
     return dq
 
@@ -1426,14 +1422,14 @@ def backward_dq_opt_per_seq(
         valid_start_indices = permute_results['valid_start_indices'][h // num_share_q_heads]
 
         index_mapping(token_index_mapping, valid_topk_idx_permuted_tile, valid_lens, valid_start_indices, num_blocks)
-        q_tile = q[:, h * head_tile : (h + 1) * head_tile]
-        k_tile = k[:, (h // num_share_q_heads) * head_tile : ((h // num_share_q_heads + 1)) * head_tile]
-        v_tile = v[:, (h // num_share_q_heads) * head_tile : ((h // num_share_q_heads + 1)) * head_tile]
-        do_tile = do[:, h * head_tile : (h + 1) * head_tile]
-        lse_tile = lse[h * head_tile : (h + 1) * head_tile]
-        topk_idx_tile = topk_idx[(h // num_share_q_heads) * head_tile : ((h // num_share_q_heads + 1)) * head_tile]
-        delta_tile = delta[h * head_tile : (h + 1) * head_tile]
-        dq_tile = dq[:, h * head_tile : (h + 1) * head_tile]
+        q_tile = q[:, h * head_tile: (h + 1) * head_tile]
+        k_tile = k[:, (h // num_share_q_heads) * head_tile: ((h // num_share_q_heads + 1)) * head_tile]
+        v_tile = v[:, (h // num_share_q_heads) * head_tile: ((h // num_share_q_heads + 1)) * head_tile]
+        do_tile = do[:, h * head_tile: (h + 1) * head_tile]
+        lse_tile = lse[h * head_tile: (h + 1) * head_tile]
+        topk_idx_tile = topk_idx[(h // num_share_q_heads) * head_tile: ((h // num_share_q_heads + 1)) * head_tile]
+        delta_tile = delta[h * head_tile: (h + 1) * head_tile]
+        dq_tile = dq[:, h * head_tile: (h + 1) * head_tile]
 
         for compute_min_block_id in range(min(2, num_blocks)):
             if compute_min_block_id == 0:
@@ -1543,7 +1539,7 @@ def backward_dq_opt_per_seq(
             num_stages=2,
         )
 
-        dq[:, h * head_tile : (h + 1) * head_tile] = dq_tile
+        dq[:, h * head_tile: (h + 1) * head_tile] = dq_tile
 
     return dq
 
