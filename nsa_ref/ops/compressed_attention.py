@@ -23,6 +23,7 @@ from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
 
 IS_HOPPER_GPU = is_hopper_gpu()
 
+
 @triton.jit
 def forward_kernel(
     q_ptr,  # Q: n x h x d
@@ -1114,7 +1115,7 @@ def transform_score(
     offs = torch.histc(offs, bins=offs.max() + 1, min=0, max=offs.max())
 
     num_offs = int(offs.shape[0])
-    
+
     BLOCK_SIZE_Q = 16
     BLOCK_SIZE_K = min(128, triton.next_power_of_2(max_blocks))
     BLOCK_SIZE_O = triton.next_power_of_2(num_offs)
@@ -1277,9 +1278,9 @@ def compressed_attention(
             for h in range(num_k_heads // head_tile):
                 # recompute score
                 score = _get_attention_score(
-                    q[:, h * num_shared_q_heads * head_tile : (h + 1) * num_shared_q_heads * head_tile],
-                    k[:, h * head_tile : (h + 1) * head_tile],
-                    lse[h * num_shared_q_heads * head_tile : (h + 1) * num_shared_q_heads * head_tile],
+                    q[:, h * num_shared_q_heads * head_tile: (h + 1) * num_shared_q_heads * head_tile],
+                    k[:, h * head_tile: (h + 1) * head_tile],
+                    lse[h * num_shared_q_heads * head_tile: (h + 1) * num_shared_q_heads * head_tile],
                     kernel_size,
                     kernel_stride,
                     cu_seqlens_q,

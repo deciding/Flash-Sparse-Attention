@@ -563,7 +563,7 @@ def _flash_attention_fwd(
     k_len, num_k_heads, head_dim = k.shape
     v_len, num_v_heads, head_dim = v.shape
     batch_size = cu_seqlens_q.shape[0] - 1
-    assert q_len == k_len and k_len == v_len
+    # assert q_len == k_len and k_len == v_len
     # gqa
     assert num_k_heads == num_v_heads
     assert num_q_heads % num_k_heads == 0

@@ -1,6 +1,5 @@
 import argparse
 import math
-from contextlib import contextmanager
 from functools import partial
 
 import torch
@@ -12,6 +11,7 @@ from nsa_ref.ops import compressed_attention, linear_compress
 from nsa_ref.ops.topk_sparse_attention import (_topk_sparse_attention_fwd,
                                                backward_dq)
 from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
+from utils import cuda_timer
 
 IS_HOPPER_GPU = is_hopper_gpu()
 
@@ -38,29 +38,6 @@ def parse_args():
     parser.add_argument("--benchmark-iters", type=int, default=10, help="Number of benchmark runs")
 
     return parser.parse_args()
-
-
-@contextmanager
-def cuda_timer(name):
-    torch.cuda.synchronize()
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-
-    start_event.record()
-
-    class TimeCapture:
-        def __init__(self):
-            self.elapsed_time = 0
-
-    time_capture = TimeCapture()
-
-    try:
-        yield time_capture
-    finally:
-        end_event.record()
-        torch.cuda.synchronize()
-        time_capture.elapsed_time = start_event.elapsed_time(end_event)
-        print(f"[{name}] Time: {time_capture.elapsed_time:.3f} ms")
 
 
 if __name__ == "__main__":

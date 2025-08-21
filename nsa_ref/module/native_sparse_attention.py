@@ -4,11 +4,8 @@ from einops import rearrange
 from flash_attn import flash_attn_varlen_func
 
 from nsa_ref.module.rope import RopeConfig, RotaryEmbedding
-from nsa_ref.ops import (
-    compressed_attention,
-    linear_compress,
-    topk_sparse_attention,
-)
+from nsa_ref.ops import (compressed_attention, linear_compress,
+                         topk_sparse_attention)
 
 
 class NativeSparseAttention(torch.nn.Module):
