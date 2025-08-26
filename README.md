@@ -44,10 +44,6 @@ In contrast, FSA exchanges the kernel loop order of original NSA kernel design, 
 The concrete computation process comparison between NSA (left) and FSA main kernel (right) can be visualized as follows:
 <img width="8817" height="3669" alt="NSA_FSA_cmop" src="https://github.com/user-attachments/assets/12250042-3c5d-40f3-82c3-d0ca443c4c45" />
 
-
-In the example in the above figure, for FSA main kernel (right), a single query head processes two non-contiguous query tokens that both attend to the same KV block. These tokens are batched together and loaded into GPU shared memory. The corresponding KV block is then loaded from its associated key-value head. Following the attention computations with the KV block, the results are stored in the output buffer using an index mapping tensor. This index mapping mechanism serves two key purposes: it enables contiguous storage of outputs while simultaneously reducing buffer memory overhead.
-
-
 ## Advantages
 
 🚀 The speedup of FSA originates from significantly lowered kernel-level memory access volume and computations.
