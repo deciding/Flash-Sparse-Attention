@@ -1,5 +1,7 @@
-import torch
 from contextlib import contextmanager
+
+import torch
+
 
 @contextmanager
 def cuda_timer(name, verbose=True):

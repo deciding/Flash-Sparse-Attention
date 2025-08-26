@@ -1,11 +1,5 @@
 import math
-import torch
-
-from nsa_ref.ops import linear_compress
-
-from utils import cuda_timer
-
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import triton
@@ -15,7 +9,6 @@ from einops import einsum, rearrange
 from nsa_ref.ops.utils import is_hopper_gpu
 
 IS_HOPPER_GPU = is_hopper_gpu()
-
 
 
 def _linear_compress_decode(
@@ -31,8 +24,7 @@ def _linear_compress_decode(
     Decode version that properly handles absolute positions and windowing.
     """
     device = new_tokens.device
-    dtype = new_tokens.dtype
-    
+
     # Update token buffer with new tokens
     if token_buffer is None:
         all_tokens = new_tokens
@@ -40,31 +32,31 @@ def _linear_compress_decode(
     else:
         all_tokens = torch.cat([token_buffer, new_tokens], dim=0)
         buffer_start_pos = prev_total_len - token_buffer.shape[0]
-    
+
     new_total_len = prev_total_len + 1
-    
+
     # Calculate which output positions we had before and what we should have now
     prev_max_output_idx = math.floor((prev_total_len - kernel_size) / kernel_stride) if prev_total_len >= kernel_size else -1
     new_max_output_idx = math.floor((new_total_len - kernel_size) / kernel_stride) if new_total_len >= kernel_size else -1
-    
+
     if new_max_output_idx <= prev_max_output_idx:
         # No new outputs to compute
         return None
-    
+
     # Determine the input window
     windows_to_compute = []
     window_start_abs = new_max_output_idx * kernel_stride  # Absolute position in full sequence
     window_end_abs = window_start_abs + kernel_size
-    
+
     # Convert to relative position in our buffer
     window_start_rel = window_start_abs - buffer_start_pos
     window_end_rel = window_end_abs - buffer_start_pos
-    
+
     # Check if we have all tokens for this window
     if window_start_rel >= 0 and window_end_rel <= all_tokens.shape[0]:
         window_tokens = all_tokens[window_start_rel:window_end_rel]
         windows_to_compute.append(window_tokens)
-    
+
     if not windows_to_compute:
         return None
     # Create cu_seqlens for the stacked windows
@@ -80,9 +72,8 @@ def _linear_compress_decode(
         y_cu_seqlens,
         intra_block_pe,
     )
-    
-    return compressed_output
 
+    return compressed_output
 
 
 class LinearCompressDecode(torch.autograd.Function):
@@ -168,7 +159,6 @@ class LinearCompressDecode(torch.autograd.Function):
             num_stages=3,
         )
         return y, y_cu_seqlens
-
 
 
 @triton.jit

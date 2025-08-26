@@ -3,14 +3,14 @@ import math
 from functools import partial
 
 import torch
-import triton
+import torch.nn as nn
 
-from fsa.ops.FSA_topk_sparse_attention import (_topk_sparse_attention_fwd_opt,
-                                               backward_dq_opt)
+from fsa.ops.FSA_topk_sparse_attention import (_topk_sparse_attention_bwd_opt,
+                                               _topk_sparse_attention_fwd_opt)
 from nsa_ref.ops import compressed_attention, linear_compress
-from nsa_ref.ops.topk_sparse_attention import (_topk_sparse_attention_fwd,
-                                               backward_dq)
-from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
+from nsa_ref.ops.topk_sparse_attention import (_topk_sparse_attention_bwd,
+                                               _topk_sparse_attention_fwd)
+from nsa_ref.ops.utils import is_hopper_gpu
 from utils import cuda_timer
 
 IS_HOPPER_GPU = is_hopper_gpu()
@@ -35,7 +35,7 @@ def parse_args():
 
     # Benchmark configuration
     parser.add_argument("--warm-up", type=int, default=5, help="Number of warm-up runs")
-    parser.add_argument("--benchmark-iters", type=int, default=10, help="Number of benchmark runs")
+    parser.add_argument("--benchmark-iters", type=int, default=30, help="Number of benchmark runs")
 
     return parser.parse_args()
 
@@ -71,9 +71,14 @@ if __name__ == "__main__":
     v = torch.randn(seqlen, num_k_heads, head_dim, device=device, dtype=dtype)
 
     # generate nsa parameters
-    compress_key = torch.randn(num_k_heads, head_dim * kernel_size, head_dim, device=device, dtype=dtype)
-    compress_value = torch.randn(num_k_heads, head_dim * kernel_size, head_dim, device=device, dtype=dtype)
-    intra_block_pe = torch.randn(num_k_heads, kernel_size, head_dim, device=device, dtype=dtype)
+    compress_key = torch.empty(num_k_heads, head_dim * kernel_size, head_dim, device=device, dtype=dtype)
+    nn.init.xavier_uniform_(compress_key)
+
+    compress_value = torch.empty(num_k_heads, head_dim * kernel_size, head_dim, device=device, dtype=dtype)
+    nn.init.xavier_uniform_(compress_value)
+
+    intra_block_pe = torch.empty(num_k_heads, kernel_size, head_dim, device=device, dtype=dtype)
+    nn.init.xavier_uniform_(intra_block_pe)
 
     # Create cumulative sequence lengths
     cu_seqlens = create_cu_seqlens(seqlen).to(device)
@@ -190,106 +195,65 @@ if __name__ == "__main__":
 
     dq = torch.zeros_like(q)
     dq_ref = torch.zeros_like(q)
+    o = torch.randn_like(q)
     do = torch.randn_like(q)
     delta = torch.randn(num_q_heads, seqlen, device=device, dtype=dtype)
 
+    max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
     func_opt_bwd = partial(
-        backward_dq_opt,
+        _topk_sparse_attention_bwd_opt,
+        o,
+        do,
+        lse_opt,
         q,
         k,
         v,
         topk_idx,
-        lse_opt,
-        delta,
-        do,
-        dq,
-        cu_seqlens,
-        cu_seqlens,
-        num_k_heads,
-        num_share_q_heads,
-        head_dim,
-        topk,
-        sm_scale,
         block_size,
+        cu_seqlens,
+        cu_seqlens,
+        max_seqlen,
+        max_seqlen,
+        sm_scale,
         permute_results,
     )
 
-    # Compute dq parameters
-    num_q_loop = N // 32768 + 1  # calculate multiple querys in one kernel if sequence length is too long
-    grid = (1, num_k_heads, triton.cdiv(N, num_q_loop))
-    BLOCK_SIZE_K = block_size
-    BLOCK_SIZE_D = triton.next_power_of_2(head_dim)
-    BLOCK_SIZE_H = max(16, triton.next_power_of_2(num_share_q_heads))
-    BLOCK_SIZE_T = triton.next_power_of_2(topk)
-    num_warps, num_stages = get_num_warps_stages(head_dim, BLOCK_SIZE_K, IS_HOPPER_GPU)
-
     # Create partial function for backward_dq kernel
     func_ref_bwd = partial(
-        backward_dq[grid],
+        _topk_sparse_attention_bwd,
+        o,
+        do,
+        lse_ref,
         q,
         k,
         v,
         topk_idx,
-        lse_ref,
-        delta,
-        do,
-        dq_ref,
+        block_size,
         cu_seqlens,
         cu_seqlens,
-        num_k_heads,
-        num_share_q_heads,
-        head_dim,
-        topk,
-        num_q_loop,
+        max_seqlen,
+        max_seqlen,
         sm_scale,
-        q.stride(0),
-        q.stride(1),
-        q.stride(2),
-        k.stride(0),
-        k.stride(1),
-        k.stride(2),
-        v.stride(0),
-        v.stride(1),
-        v.stride(2),
-        topk_idx.stride(0),
-        topk_idx.stride(1),
-        topk_idx.stride(2),
-        lse_ref.stride(0),
-        lse_ref.stride(1),
-        delta.stride(0),
-        delta.stride(1),
-        do.stride(0),
-        do.stride(1),
-        do.stride(2),
-        dq_ref.stride(0),
-        dq_ref.stride(1),
-        dq_ref.stride(2),
-        BLOCK_SIZE_K=BLOCK_SIZE_K,
-        BLOCK_SIZE_D=BLOCK_SIZE_D,
-        BLOCK_SIZE_H=BLOCK_SIZE_H,
-        BLOCK_SIZE_T=BLOCK_SIZE_T,
-        num_warps=num_warps,
-        num_stages=num_stages,
     )
 
     print("\nWarming up reference bwd kernel...")
     for i in range(warm_up):
         func_ref_bwd()
 
-    with cuda_timer("--bwd dq") as timer_ref:
+    with cuda_timer("topk_sparse_attention_bwd_ref") as timer_ref:
         for i in range(benchmark_iters):
-            func_ref_bwd()
+            dq_ref, dk_ref, dv_ref = func_ref_bwd()
 
     bwd_ref_time = timer_ref.elapsed_time
 
     print("\nWarming up FSA optimized bwd kernel...")
     for i in range(warm_up):
-        dq = func_opt_bwd()
+        func_opt_bwd()
 
     print("Benchmarking FSA optimized bwd kernel...")
     with cuda_timer("topk_sparse_attention_bwd_opt") as timer:
         for i in range(benchmark_iters):
-            dq = func_opt_bwd()
+            dq, dk, dv = func_opt_bwd()
 
     bwd_opt_time = timer.elapsed_time
 
@@ -299,6 +263,12 @@ if __name__ == "__main__":
 
     dq_diff = (dq_ref - dq).abs().max()
     dq_relative_diff = (dq_ref - dq).abs().max() / dq_ref.abs().max()
+
+    dk_diff = (dk_ref - dk).abs().max()
+    dk_relative_diff = (dk_ref - dk).abs().max() / dk_ref.abs().max()
+
+    dv_diff = (dv_ref - dv).abs().max()
+    dv_relative_diff = (dv_ref - dv).abs().max() / dv_ref.abs().max()
 
     # Assert accuracy
     try:
@@ -315,6 +285,8 @@ if __name__ == "__main__":
 
     try:
         torch.testing.assert_close(dq_ref, dq.to(torch.bfloat16), atol=9e-1, rtol=1e-3)
+        torch.testing.assert_close(dk_ref, dk.to(torch.bfloat16), atol=9e-1, rtol=1e-3)
+        torch.testing.assert_close(dv_ref, dv.to(torch.bfloat16), atol=9e-1, rtol=1e-3)
         print("✅ [Bwd] Output accuracy test PASSED (atol=9e-1, rtol=1e-3)")
     except AssertionError as e:
         print(f"❌ [Bwd] Output accuracy test FAILED: {e}")
@@ -342,6 +314,8 @@ if __name__ == "__main__":
     print(f"  - [Fwd] Output diff: {total_diff:.2e} (relative: {relative_diff:.2e})")
     print(f"  - [Fwd] LSE diff: {lse_diff:.2e}")
     print(f"  - [Bwd] dQ diff: {dq_diff:.2e} (relative: {dq_relative_diff:.2e})")
+    print(f"  - [Bwd] dK diff: {dk_diff:.2e} (relative: {dk_relative_diff:.2e})")
+    print(f"  - [Bwd] dV diff: {dv_diff:.2e} (relative: {dv_relative_diff:.2e})")
 
     print("\nPerformance:")
     print(f"  - [Fwd] Reference: {avg_ref_time:.3f} ms")

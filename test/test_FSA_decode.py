@@ -1,13 +1,14 @@
 # This file is modified from the original implementation (implemented by Xunhao Lai)
 import argparse
 import math
+from functools import partial
+
 import torch
 
-from utils import cuda_timer
 from nsa_ref.module import RopeConfig
 from nsa_ref.ops import linear_compress
 from nsa_ref.ops.flash_attention import flash_attention_varlen
-from functools import partial
+from utils import cuda_timer
 
 if __name__ == "__main__":
     torch.manual_seed(42)
@@ -78,13 +79,13 @@ if __name__ == "__main__":
     print(f"======= Init Moduel: {args.attn_mode} =======\n")
     for name, param in sparse_attn.named_parameters():
         print(f"{args.attn_mode} Parameters, {name}, shape: {param.shape}\n")
-    
+
     # random input
     if args.nseqs > 1:
         seqlens = torch.LongTensor([seqlen] * args.nseqs).int().cuda()
     else:
         seqlens = torch.LongTensor(args.seqlens).int().cuda()
-    
+
     cu_seqlens = torch.cat(
         [
             torch.zeros(1, dtype=torch.int32, device="cuda"),
@@ -103,12 +104,10 @@ if __name__ == "__main__":
     cmp_k_rope_cache = torch.randn(cmp_len, args.kv_heads, head_dim, device='cuda', dtype=DTYPE)
     cmp_v_cache = torch.randn(cmp_len, args.kv_heads, head_dim, device='cuda', dtype=DTYPE)
 
-
     # generate nsa parameters
     compress_key = torch.randn(args.kv_heads, head_dim * args.kernel_size, head_dim, device="cuda", dtype=DTYPE)
     compress_value = torch.randn(args.kv_heads, head_dim * args.kernel_size, head_dim, device="cuda", dtype=DTYPE)
     intra_block_pe = torch.randn(args.kv_heads, args.kernel_size, head_dim, device="cuda", dtype=DTYPE)
-
 
     # Compute topk_idx using compressed_attention
     print("Computing topk_idx using compressed_attention...")
@@ -159,7 +158,6 @@ if __name__ == "__main__":
     q = torch.randn(seqlen, q_heads, head_dim, device=device, dtype=DTYPE)
     k = torch.randn(seqlen, kv_heads, head_dim, device=device, dtype=DTYPE)
     v = torch.randn(seqlen, kv_heads, head_dim, device=device, dtype=DTYPE)
-
 
     # warmup
     print(f"======= {args.attn_mode} Forward & Backward Performance Test =======\n")

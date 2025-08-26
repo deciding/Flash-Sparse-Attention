@@ -3,10 +3,11 @@ import torch
 from einops import rearrange
 from flash_attn import flash_attn_varlen_func
 
-from fsa_preview.ops import _linear_compress_decode, _compressed_attention_decode, _topk_sparse_attention_decode
+from fsa_preview.ops import (_compressed_attention_decode,
+                             _linear_compress_decode,
+                             _topk_sparse_attention_decode)
 from nsa_ref.module.rope import RopeConfig, RotaryEmbedding
 
-from utils import cuda_timer
 
 class FlashSparseAttentionDecode(torch.nn.Module):
     def __init__(
@@ -95,14 +96,14 @@ class FlashSparseAttentionDecode(torch.nn.Module):
             ],
             dim=0,
         ).to(torch.int32)
-    
-        # compressed key and value before rope        
+
+        # compressed key and value before rope
         # Prepare initial buffer with some context from first part
         # Need last (kernel_size-1) tokens from first part for potential overlapping windows
         buffer_size = min(self.kernel_size - 1, cmp_k_cache.shape[0])
         initial_buffer_k = cmp_k_cache[-buffer_size:] if buffer_size > 0 else None
         initial_buffer_v = cmp_v_cache[-buffer_size:] if buffer_size > 0 else None
-        
+
         # Decode the last part
         decode_k_output = _linear_compress_decode(
             k_new,
@@ -113,7 +114,7 @@ class FlashSparseAttentionDecode(torch.nn.Module):
             cmp_k_cache.shape[0],
             initial_buffer_k,
         )
-        
+
         decode_v_output = _linear_compress_decode(
             v_new,
             self.compress_value,
@@ -129,7 +130,7 @@ class FlashSparseAttentionDecode(torch.nn.Module):
             compressed_v = torch.cat([cmp_v_cache, decode_v_output], dim=0)
         else:
             compressed_k = cmp_k_cache
-            compressed_v = cmp_v_cache      
+            compressed_v = cmp_v_cache
 
         # do rope for query and compressed key
         q = self.rope(q, cu_seqlens_q)
@@ -160,7 +161,7 @@ class FlashSparseAttentionDecode(torch.nn.Module):
 
         # topk sparse attention
         sparse_attn_output = _topk_sparse_attention_decode(
-            q, k, v, topk_idx, self.block_size, 
+            q, k, v, topk_idx, self.block_size,
             # cu_seqlen_q and cu_seqlen_k
             cu_seqlens_q,
             cu_seqlens_k,
@@ -169,7 +170,7 @@ class FlashSparseAttentionDecode(torch.nn.Module):
             seqlens_k.max().item(),
             None
         )
-        
+
         # sliding window attention
         sliding_attn_output = flash_attn_varlen_func(
             q,
@@ -182,7 +183,7 @@ class FlashSparseAttentionDecode(torch.nn.Module):
             causal=False,
             window_size=(self.window_size, -1),
         )
-        
+
         # gate average
         gate = self.gate(x)
         attn_output = (

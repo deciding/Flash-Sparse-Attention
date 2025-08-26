@@ -1,4 +1,5 @@
 import argparse
+
 import torch
 
 from fsa_preview.ops import _linear_compress_decode
@@ -75,18 +76,18 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("TESTING LINEAR_COMPRESS_DECODE")
     print("="*60)
-    
+
     # Test with different append sizes
     test_append_sizes = [1]
     test_append_sizes = [size for size in test_append_sizes if size <= seqlen//2]
-    
+
     for append_size in test_append_sizes:
         split_point = seqlen - append_size
         if split_point <= kernel_size:  # Need enough tokens for at least one window
             continue
-            
+
         print(f"\nTesting: prefill({seqlen}) vs prefill({split_point}) + decode({append_size})")
-        
+
         # Method 1: Full sequence training (ground truth)
         full_compressed_k, full_compressed_cu_seqlen = linear_compress(
             k,
@@ -96,7 +97,7 @@ if __name__ == "__main__":
             kernel_stride,
             intra_block_pe,
         )
-        
+
         full_compressed_v, _ = linear_compress(
             v,
             compress_value,
@@ -124,13 +125,13 @@ if __name__ == "__main__":
             local_blocks=2,
             parallel_topk_compute=False,
         )
-        
+
         # Method 2: Split into prefill(n-k) + decode(k)
         # First part: training on first split_point tokens
         k_first_part = k[:split_point]
         v_first_part = v[:split_point]
         cu_seqlens_first = create_cu_seqlens(split_point).to(device)
-        
+
         compressed_k_first, compressed_cu_seqlens_first = linear_compress(
             k_first_part,
             compress_key,
@@ -152,13 +153,13 @@ if __name__ == "__main__":
         # Second part: decode on last append_size tokens
         k_last_part = k[split_point:]
         v_last_part = v[split_point:]
-        
+
         # Prepare initial buffer with some context from first part
         # Need last (kernel_size-1) tokens from first part for potential overlapping windows
         buffer_size = min(kernel_size - 1, split_point)
         initial_buffer_k = k_first_part[-buffer_size:] if buffer_size > 0 else None
         initial_buffer_v = v_first_part[-buffer_size:] if buffer_size > 0 else None
-        
+
         # Decode the last part
         decode_k_output = _linear_compress_decode(
             k_last_part,
@@ -169,7 +170,7 @@ if __name__ == "__main__":
             split_point,
             initial_buffer_k,
         )
-        
+
         decode_v_output = _linear_compress_decode(
             v_last_part,
             compress_value,
@@ -179,14 +180,14 @@ if __name__ == "__main__":
             split_point,
             initial_buffer_v,
         )
-        
+
         # Combine results
         if decode_k_output.shape[0] > 0:
             combined_compressed_k = torch.cat([compressed_k_first, decode_k_output], dim=0)
             combined_compressed_v = torch.cat([compressed_v_first, decode_v_output], dim=0)
         else:
             combined_compressed_k = compressed_k_first
-            combined_compressed_v = compressed_v_first       
+            combined_compressed_v = compressed_v_first
 
         compressed_seqlens_full = full_compressed_cu_seqlen[1:] - full_compressed_cu_seqlen[:-1]
         attn_output_cur, topk_idx_cur = compressed_attention(
@@ -206,34 +207,32 @@ if __name__ == "__main__":
             local_blocks=2,
             parallel_topk_compute=False,
         )
-        
+
         # Check shapes match
         assert full_compressed_k.shape == combined_compressed_k.shape, \
             f"K shape mismatch: {full_compressed_k.shape} vs {combined_compressed_k.shape}"
         assert full_compressed_v.shape == combined_compressed_v.shape, \
             f"V shape mismatch: {full_compressed_v.shape} vs {combined_compressed_v.shape}"
-        
+
         # Check values match
         torch.testing.assert_close(
-            full_compressed_k, combined_compressed_k, 
+            full_compressed_k, combined_compressed_k,
             rtol=1e-4, atol=1e-5,
             msg="K values don't match between full training and split+decode"
         )
         torch.testing.assert_close(
-            full_compressed_v, combined_compressed_v, 
+            full_compressed_v, combined_compressed_v,
             rtol=1e-4, atol=1e-5,
             msg="V values don't match between full training and split+decode"
         )
         torch.testing.assert_close(
-            attn_output_full, attn_output_cur, 
+            attn_output_full, attn_output_cur,
             rtol=1e-4, atol=1e-5,
             msg="Compressed attention values don't match between full training and split+decode"
         )
- 
-        print(f"  ✅ Test PASSED for decode_size={append_size}")
 
+        print(f"  ✅ Test PASSED for decode_size={append_size}")
 
     print("\n" + "="*60)
     print("DECODE TESTING COMPLETED")
     print("="*60)
-

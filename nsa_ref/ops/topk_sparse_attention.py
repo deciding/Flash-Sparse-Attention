@@ -919,7 +919,6 @@ def _topk_sparse_attention_bwd(
     max_seqlen_q: int,
     max_seqlen_k: int,
     sm_scale: float,
-    permute_results,
 ):
 
     assert block_size in {32, 64, 128, 256}
@@ -1140,7 +1139,6 @@ class TopkSparseAttention(torch.autograd.Function):
         )
 
         ctx.save_for_backward(q, k, v, o, lse, cu_seqlens_q, cu_seqlens_k, topk_idx)
-        ctx.permute_results = permute_results
         ctx.sm_scale = sm_scale
         ctx.max_seqlen_q = max_seqlen_q
         ctx.max_seqlen_k = max_seqlen_k
@@ -1150,7 +1148,6 @@ class TopkSparseAttention(torch.autograd.Function):
     @staticmethod
     def backward(ctx, do: torch.Tensor, *args) -> Any:
         q, k, v, o, lse, cu_seqlens_q, cu_seqlens_k, topk_idx = ctx.saved_tensors
-        permute_results = ctx.permute_results
 
         max_seqlen_q = ctx.max_seqlen_q
         max_seqlen_k = ctx.max_seqlen_k
@@ -1172,7 +1169,6 @@ class TopkSparseAttention(torch.autograd.Function):
             max_seqlen_q,
             max_seqlen_k,
             sm_scale,
-            permute_results,
         )
         return dq, dk, dv, None, None, None, None, None, None, None, None
 
