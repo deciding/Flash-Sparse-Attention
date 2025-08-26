@@ -919,7 +919,6 @@ def _topk_sparse_attention_bwd(
     max_seqlen_q: int,
     max_seqlen_k: int,
     sm_scale: float,
-    permute_results,
 ):
 
     assert block_size in {32, 64, 128, 256}

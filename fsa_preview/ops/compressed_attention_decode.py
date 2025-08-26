@@ -1,13 +1,13 @@
 import math
 import warnings
+from typing import Tuple
+
 import torch
 import triton
 import triton.language as tl
 
-from nsa_ref.ops.compressed_attention import _get_attention_score, _transform_score_kernel, score_kernel
+from nsa_ref.ops.compressed_attention import _transform_score_kernel
 from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
-from typing import Any, Tuple, Union
-from utils import cuda_timer
 
 IS_HOPPER_GPU = is_hopper_gpu()
 
@@ -149,7 +149,7 @@ def _compressed_attention_decode(
     # softmax scale
     if sm_scale is None:
         sm_scale = 1 / math.sqrt(q.shape[-1])
-    
+
     attn_output, lse = _compressed_attention_fwd_decode(
         q,
         k,
@@ -168,7 +168,7 @@ def _compressed_attention_decode(
     if topk <= 0:
         warnings.warn("topk <= 0, returned topk_idx will be None")
         return attn_output, None
-    
+
     assert topk >= init_blocks + local_blocks
     with torch.no_grad():
         # with cuda_timer("score kernels"):
@@ -198,14 +198,13 @@ def _compressed_attention_decode(
                 init_blocks,
                 local_blocks,
             )
-        
+
         # get topk
         topk = min(topk, score.shape[-1])
         topk_idx = score.topk(topk, dim=-1).indices
         topk_idx = topk_idx.to(torch.int32)
 
     return attn_output, topk_idx
-
 
 
 def _get_attention_score_decode(
@@ -247,7 +246,7 @@ def _get_attention_score_decode(
     BLOCK_SIZE_Q = 16
     BLOCK_SIZE_K = 64
     BLOCK_SIZE_D = triton.next_power_of_2(head_dim)
-    
+
     score_kernel_decode[grid](
         q,
         k,
@@ -314,7 +313,7 @@ def transform_score_decode(
     offs = torch.histc(offs, bins=offs.max() + 1, min=0, max=offs.max())
 
     num_offs = int(offs.shape[0])
-    
+
     BLOCK_SIZE_Q = 16
     BLOCK_SIZE_K = min(128, triton.next_power_of_2(max_blocks))
     BLOCK_SIZE_O = triton.next_power_of_2(num_offs)
@@ -403,7 +402,6 @@ def forward_kernel_decode(
     # get batch id and head id
     pid_b = tl.program_id(0)
     pid_h = tl.program_id(1)
-    pid_q = tl.program_id(2)
     pid_kh = pid_h // NUM_SHARE_Q_HEADS
     # get q k start and len after rmpad
     q_start = tl.load(cu_seqlens_q + pid_b)
@@ -592,4 +590,3 @@ def score_kernel_decode(
         order=(1, 0),
     )
     tl.store(s_ptrs, s.to(s_ptr.dtype.element_ty), boundary_check=(0, 1))
-

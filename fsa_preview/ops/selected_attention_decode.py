@@ -1,5 +1,7 @@
 import math
+
 import torch
+
 from nsa_ref.ops.topk_sparse_attention import _topk_sparse_attention_fwd
 
 

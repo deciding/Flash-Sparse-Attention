@@ -1712,7 +1712,7 @@ def backward_dkdv(
     tl.store(dv_ptrs, dv.to(dv_ptr.dtype.element_ty), boundary_check=(0, 1))
 
 
-def _topk_sparse_attention_bwd(
+def _topk_sparse_attention_bwd_opt(
     o: torch.Tensor,
     do: torch.Tensor,
     lse: torch.Tensor,
@@ -1942,7 +1942,7 @@ class FSATopkSparseAttention(torch.autograd.Function):
         block_size = ctx.block_size
         assert block_size in {32, 64, 128, 256}
 
-        dq, dk, dv = _topk_sparse_attention_bwd(
+        dq, dk, dv = _topk_sparse_attention_bwd_opt(
                 o,
                 do,
                 lse,
