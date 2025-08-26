@@ -2,6 +2,12 @@
 
 ---
 
+<div align="center">
+
+[![arxiv](https://img.shields.io/badge/arXiv-2508.18224-b31b1b.svg?style=flat-square)](https://arxiv.org/abs/2508.18224)
+
+</div>
+
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient Native Sparse Attention (NSA) across a wide range of popular LLMs on modern GPUs.
 
 - [News](#news)
@@ -23,36 +29,36 @@ This repository provides the official implementation of **<ins>F</ins>lash <ins>
 
 ## News
 
-- **$\texttt{[2025-08, upcoming]}$:** 💥 Our Arxiv paper will be released soon.
+- **$\texttt{[2025-09, upcoming]}$:** 🚀 Online profiling module, which seamlessly transitions between NSA and FSA, will be released soon.
+- **$\texttt{[2025-08]}$:** 💥 Our [Arxiv paper](https://www.arxiv.org/abs/2508.18224) is released.
 - **$\texttt{[2025-08]}$:** 🎈 Beta version of one-step decoding is released, check the code residing in [`fsa_preview`](fsa_preview).
 - **$\texttt{[2025-08]}$:** 🎉 Open sourced `Flash-Sparse-Attention`, offering an optimized implementation for NSA, broadening the applicability of this novel natively trainable sparse attention technique.
 
 ## Method
 
-For NSA selected attention module, the major system bottleneck, FSA decouples the computation into two major kernels: (i) the main kernel batches query tokens that attend to the same KV block and stores the partial results to a buffer, (ii) the reduction kernel accumulates attention results for each query token. The key insight behind this arrangement is to allow more efficient computation hardware, while avoiding `atomic` additions for accumulating attention results for each query token across KV blocks.
+For NSA selected attention module, the major system bottleneck, NSA loops over query tokens in the outer loop and loops over KV blocks in the inner loop. To optimize performance, NSA batches query heads that share the same key-value head for more efficient computation. However, when GQA group size is not sufficiently large, NSA selected attention kernel must pad data to satisfy hardware requirements on the matrix dimensions of matrix multiplication. Specifically, for NVIDIA GPUs, the [warp-level matrix multiply-accumulate instructions](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions) require that each dimension of a matrix tile executed on a warp must be larger than the specified value (at least 8 on Hopper GPUs). In [Triton](https://triton-lang.org/main/), NSA selected attention kernel must also satisfy that each dimension of a matrix tile executed on a thread block must be at least 16.
 
-For FSA main kernel, the concrete computation process can be visualized as follows:
-<img width="4679" height="3626" alt="FSA_main_kernel" src="https://github.com/user-attachments/assets/cfe8bda2-75ed-42b8-8e69-8635b3fe95c7" />
 
-In the example in the above figure, a single query head processes two non-contiguous query tokens that both attend to the same KV block. These tokens are batched together and loaded into GPU shared memory. The corresponding KV block is then loaded from its associated key-value head. Following the attention computations with the KV block, the results are stored in the output buffer using an index mapping tensor. This index mapping mechanism serves two key purposes: it enables contiguous storage of outputs while simultaneously reducing buffer memory overhead.
+In contrast, FSA exchanges the kernel loop order of original NSA kernel design, i.e., FSA loops over KV blocks in the outer loop and loops over query tokens in the inner loop. To optimize performance, FSA decouples the computation into three major kernels: (i) the main kernel batches query tokens that attend to the same KV block and stores the partial results to a buffer, (ii) the reduction kernel accumulates attention results for each query token, and (iii) the online softmax kernel that handles online softmax statistics computation. The key insight behind this arrangement is to effectively reduce unnecessary memory access and computations for the padded data, while avoiding `atomic` additions for accumulating attention results for each query token across KV blocks.
 
+The concrete computation process comparison between NSA (left) and FSA main kernel (right) can be visualized as follows:
+<img width="8817" height="3669" alt="NSA_FSA_cmop" src="https://github.com/user-attachments/assets/12250042-3c5d-40f3-82c3-d0ca443c4c45" />
 
 ## Advantages
 
 🚀 The speedup of FSA originates from significantly lowered kernel-level memory access volume and computations.
 
-The kernel method for the selected attention module introduced in [NSA paper](https://arxiv.org/abs/2502.11089) batches query heads that share the same key-value head. When the GQA group size is not sufficiently large, NSA must pad query heads to meet hardware or software requirements, leading to unnecessary memory access and computation for the padded data. In contrast, the kernel method in FSA avoids the additional memory access and computation.
+Under varied GQA group sizes, NSA hyperparameters block size $B_K=64$ and topk-k value $T=16$, 64K sequence length, 4 KV heads, the execution latency comparisons between NSA and our method are as follows (execution latency of our method is normalized to 1):
+<img width="4320" height="2592" alt="GQA_comp" src="https://github.com/user-attachments/assets/8cd7d3c2-4b8b-4e9b-bce9-ce290cb792fe" />
 
-Under varied GQA group sizes and NSA hyperparameters (block size $BK$ and topk-k value $Topk$), the memory access volume and number of floating-point operations ratio comparisons between NSA and our method are as follows:
-<img width="6144" height="2252" alt="new_figure" src="https://github.com/user-attachments/assets/04e4462d-f2b4-4a63-abb0-1ad59d39e497" />
 
 
 ## Features
 
-FSA provides an optimized kernel implementation for NSA selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than or equal to 8, which is more popular on state-of-the-art large language models (LLMs), on modern high-performance NVIDIA GPUs. For GQA group sizes larger than 8, FSA usually chooses to fall back to the original NSA implementation for better performance.
+FSA provides an optimized kernel implementation for NSA selected attention module. Without modifying NSA algorithm, FSA provides an efficient Triton-based implementation for GQA group sizes smaller than 8, which is more popular on state-of-the-art large language models (LLMs), on modern high-performance NVIDIA GPUs. For GQA group sizes larger than or equal to 8, FSA usually chooses to fall back to the original NSA implementation for better performance.
 
 FSA is currently well tested with:
-- NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 SXM, H200 SXM);
+- NVIDIA Ampere or Hopper GPUs (e.g., A100 SXM, H20, H100 PCIe, H100 NVL, H100 SXM, H200 SXM);
 - Datatype of fp16 and bf16;
 - The same head dimension (less than or equal to 256) across query, key, and value;
 - Varied GQA group sizes, ranging from 1 to 16;
@@ -166,14 +172,18 @@ Try varied ``gqa``, `seqlen`, `block_size`, `topk` argument in the provided scri
 ## Citation
 
 ```
-@misc{Yan2025FSA,
+@article{yan2025flashsparseattentionalternative,
   title={Flash Sparse Attention: More Efficient Natively Trainable Sparse Attention},
   author={Yan, Ran and Jiang, Youhe and Yuan, Binhang},
-  howpublished = {\url{https://github.com/Relaxed-System-Lab/Flash-Sparse-Attention}},
+  journal={arXiv preprint arXiv:2508.18224},
   year={2025}
 }
 ```
 
 ## Acknowledgments
 
+NSA paper:
 [Native Sparse Attention](https://arxiv.org/abs/2502.11089)
+
+NSA reference implementation:
+[Native Sparse Attention Triton](https://github.com/XunhaoLai/native-sparse-attention-triton)
