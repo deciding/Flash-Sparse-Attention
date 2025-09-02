@@ -1123,8 +1123,6 @@ class TopkSparseAttention(torch.autograd.Function):
         if sm_scale is None:
             sm_scale = 1 / math.sqrt(q.shape[-1])
 
-        permute_results = None
-
         o, lse = _topk_sparse_attention_fwd(
             q,
             k,
