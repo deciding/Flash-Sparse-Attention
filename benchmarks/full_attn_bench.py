@@ -18,9 +18,7 @@ from nsa_ref.ops.flash_attention import flash_attention_varlen as flash_attentio
 # NOTE (yiakwy) : CUDNN (v1.14) is not the SOTA in attention decoding
 import cudnn
 
-# NOTE (yiakwy) : GQA flops estimation with kv heads
-def flops(batch, nheads, gqa, seqlen_q, seqlen_k, headdim, headdim_v, causal=False, window_size=(-1, -1)):
-    num_kv_heads = nheads // gqa
+def flops(batch, nheads, seqlen_q, seqlen_k, headdim, headdim_v, causal=False, window_size=(-1, -1)):
     if causal:
         avg_seqlen = (max(0, seqlen_k - seqlen_q) + seqlen_k) / 2
     else:
@@ -32,7 +30,7 @@ def flops(batch, nheads, gqa, seqlen_q, seqlen_k, headdim, headdim_v, causal=Fal
             col_right = torch.minimum(row_idx + seqlen_k - seqlen_q - window_size[1], torch.tensor(seqlen_k - 1))
             avg_seqlen = (col_right - col_left + 1).float().mean().item()
 
-    return batch * num_kv_heads * 2 * seqlen_q * avg_seqlen * (headdim + headdim_v)
+    return batch * nheads * 2 * seqlen_q * avg_seqlen * (headdim + headdim_v)
 
 
 def get_bench_input_configs(head_dim=128):
