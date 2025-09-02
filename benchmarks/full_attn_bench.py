@@ -12,11 +12,11 @@ try:
     flash_attention_varlen_fa3 = fa3.flash_attn_varlen_func
 except:
     raise Exception("We only use FA3 in Hopper platform as formal baseline.")
-
-    assert triton
     
 from nsa_ref.ops.flash_attention import flash_attention_varlen as flash_attention_varlen_naive_triton
 
+# NOTE (yiakwy) : CUDNN (v1.14) is not the SOTA in attention decoding
+import cudnn
 
 # NOTE (yiakwy) : GQA flops estimation with kv heads
 def flops(batch, nheads, gqa, seqlen_q, seqlen_k, headdim, headdim_v, causal=False, window_size=(-1, -1)):
@@ -38,6 +38,7 @@ def flops(batch, nheads, gqa, seqlen_q, seqlen_k, headdim, headdim_v, causal=Fal
 def get_bench_input_configs(head_dim=128):
     gqa = [1, 2]
     seq_lens = [32768, 66536]
+    seq_lens = [16 * 1024, 32 * 1024, 64 * 1024]
 
     num_heads = [40,]
     hidden_size = [ head_dim * H for H in num_heads ]
@@ -45,7 +46,7 @@ def get_bench_input_configs(head_dim=128):
     # Note(yiakwy) : Tri Dao's implementation only supports bf16
     dtype = [ torch.bfloat16, ]
 
-    benchmark_bwd = [ True ]
+    benchmark_bwd = [ True, False ]
 
     configs = list( itertools.product(gqa, seq_lens, hidden_size, num_heads, dtype, benchmark_bwd) )
     return configs
@@ -152,7 +153,7 @@ def benchmark_flashattn_varlen(
 
     if provider == "fa3_perf":
         # by default
-        nflops = 2 * batch_size * num_kv_heads * seq_lens[0] * ( seq_lens[0] / 2 ) * (head_dim + head_dim)
+        nflops = 2 * batch_size * num_heads * seq_lens[0] * ( seq_lens[0] / 2 ) * (head_dim + head_dim)
         tflops = nflops / (ms * 1e-3) * 1e-12
         min_tflops = nflops / (min_ms * 1e-3) * 1e-12
         max_tflops = nflops / (max_ms * 1e-3) * 1e-12
