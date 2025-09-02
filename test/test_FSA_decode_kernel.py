@@ -1,11 +1,14 @@
 # This file is modified from the original implementation (implemented by Xunhao Lai)
 import argparse
 import math
+from functools import partial
 
 import torch
 
 from nsa_ref.module import RopeConfig
 from nsa_ref.ops import linear_compress
+from nsa_ref.ops.flash_attention import flash_attention_varlen
+from utils import cuda_timer
 
 if __name__ == "__main__":
     torch.manual_seed(42)
@@ -21,7 +24,6 @@ if __name__ == "__main__":
     parser.add_argument("--kernel-stride", type=int, default=16)
     parser.add_argument("--nseqs", type=int, default=1)
     parser.add_argument("--block-size", type=int, default=64)
-    parser.add_argument("--hidden-size", type=int, default=4096)
     parser.add_argument("--benchmark-iters", type=int, default=5)
     parser.add_argument("--dtype", type=str,  default="float16", choices=["bfloat16", "float16", "float32"])
 
@@ -38,11 +40,11 @@ if __name__ == "__main__":
         kv_heads = args.heads // args.gqa_deg
     assert q_heads % args.gqa_deg == 0
 
-    from fsa_preview.module.fsa_decode import FlashSparseAttentionDecode
+    from fsa_preview.module.fsa_decode_kernel import FlashSparseAttentionDecodeKernel
 
     sparse_attn = (
-        FlashSparseAttentionDecode(
-            hidden_size=args.hidden_size,
+        FlashSparseAttentionDecodeKernel(
+            hidden_size=head_dim * q_heads,
             num_q_heads=q_heads,
             num_kv_heads=kv_heads,
             head_dim=head_dim,
@@ -53,18 +55,6 @@ if __name__ == "__main__":
             init_blocks=1,
             local_blocks=2,
             window_size=512,
-            rope_config=RopeConfig(
-                max_position_embeddings=131072,
-                head_dim=head_dim,
-                rope_theta=500000,
-                rope_scaling={
-                    "factor": 8.0,
-                    "high_freq_factor": 4.0,
-                    "low_freq_factor": 1.0,
-                    "original_max_position_embeddings": 8192,
-                    "rope_type": "llama3",
-                },
-            ),
         )
         .cuda()
         .to(DTYPE)
@@ -90,10 +80,12 @@ if __name__ == "__main__":
         ],
         dim=0,
     ).to(torch.int32)
-    x = torch.randn(1, args.hidden_size, device="cuda", dtype=DTYPE)
+    q = torch.randn(1, q_heads, head_dim, device='cuda', dtype=DTYPE)
+    k_new = torch.randn(1, kv_heads, head_dim, device='cuda', dtype=DTYPE)
+    v_new = torch.randn(1, kv_heads, head_dim, device='cuda', dtype=DTYPE)
 
-    k_cache = torch.randn(seqlen - 1, args.kv_heads, head_dim, device='cuda', dtype=DTYPE)
-    v_cache = torch.randn(seqlen - 1, args.kv_heads, head_dim, device='cuda', dtype=DTYPE)
+    k_cache = torch.randn(seqlen - 1, kv_heads, head_dim, device='cuda', dtype=DTYPE)
+    v_cache = torch.randn(seqlen - 1, kv_heads, head_dim, device='cuda', dtype=DTYPE)
 
     cmp_len = (k_cache.shape[0] - args.kernel_size) // args.kernel_stride + 1
 
@@ -133,7 +125,7 @@ if __name__ == "__main__":
     # warmup
     print(f"======= {args.attn_mode} Decode Performance Test =======\n")
     for i in range(4):
-        y = sparse_attn(x, cu_seqlens_q, cu_seqlens, k_cache, v_cache, cmp_k_cache, cmp_v_cache)
+        y = sparse_attn(q, k_new, v_new, cu_seqlens_q, cu_seqlens, k_cache, v_cache, cmp_k_cache, cmp_v_cache)
 
     torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
@@ -142,11 +134,39 @@ if __name__ == "__main__":
     start_event.record()
     num_iters = args.benchmark_iters
     for i in range(num_iters):
-        y = sparse_attn(x, cu_seqlens_q, cu_seqlens, k_cache, v_cache, cmp_k_cache, cmp_v_cache)
+        y = sparse_attn(q, k_new, v_new, cu_seqlens_q, cu_seqlens, k_cache, v_cache, cmp_k_cache, cmp_v_cache)
     end_event.record()
     torch.cuda.synchronize()
 
     elapsed_ms = start_event.elapsed_time(end_event) / num_iters
 
     benchmark_mode = "One step decode"
-    print(f"[{args.attn_mode} E2E ({benchmark_mode})] Time: {elapsed_ms:.3f} ms\n")
+    print(f"[{args.attn_mode} Kernels ({benchmark_mode})] Time: {elapsed_ms:.3f} ms\n")
+
+    device = "cuda"
+    q = torch.randn(seqlen, q_heads, head_dim, device=device, dtype=DTYPE)
+    k = torch.randn(seqlen, kv_heads, head_dim, device=device, dtype=DTYPE)
+    v = torch.randn(seqlen, kv_heads, head_dim, device=device, dtype=DTYPE)
+
+    # warmup
+    print(f"======= {args.attn_mode} Decode Performance Test =======\n")
+    fa_decode_func = partial(
+        flash_attention_varlen,
+        q,
+        k,
+        v,
+        torch.tensor([0, 1]).cuda().int(),
+        cu_seqlens,
+        1,
+        seqlens.max().item(),
+        False,
+    )
+    for i in range(4):
+        fa_decode_func()
+
+    with cuda_timer("full attention", verbose=False) as fa_timer:
+        for i in range(num_iters):
+            fa_decode_func()
+
+    fa_time = fa_timer.elapsed_time / num_iters
+    print(f"[Full Attention Kernel ({benchmark_mode})] Time: {fa_time:.3f} ms\n")

@@ -1,5 +1,4 @@
 import itertools
-
 # This file is for benchmarking full attention (enabled by flash-attn-triton)
 from functools import partial
 
@@ -12,11 +11,13 @@ try:
     flash_attention_varlen_fa3 = fa3.flash_attn_varlen_func
 except:
     raise Exception("We only use FA3 in Hopper platform as formal baseline.")
-    
-from nsa_ref.ops.flash_attention import flash_attention_varlen as flash_attention_varlen_naive_triton
 
 # NOTE (yiakwy) : CUDNN (v1.14) is not the SOTA in attention decoding
 import cudnn
+
+from nsa_ref.ops.flash_attention import \
+    flash_attention_varlen as flash_attention_varlen_naive_triton
+
 
 def flops(batch, nheads, seqlen_q, seqlen_k, headdim, headdim_v, causal=False, window_size=(-1, -1)):
     if causal:
@@ -61,12 +62,14 @@ def get_bench_input_configs(head_dim=128):
             "Naive Triton (ms)",
             "FA3 (TFLOPS)"
         ],
-        styles=[("blue", "-"), ("green", "-"),("blue", "None")],
+        styles=[("blue", "-"), ("green", "-"), ("blue", "None")],
         ylabel="miu s",  # "elapse",
         plot_name="bf16-fp8-full-attention-performance",
         args={},
     )
 )
+
+
 def benchmark_flashattn_varlen(
     gqa,
     seq_lens,
@@ -74,9 +77,9 @@ def benchmark_flashattn_varlen(
     num_heads,
     dtype,
     benchmark_bwd,
-    provider, 
-    model=None, 
-    args=None, 
+    provider,
+    model=None,
+    args=None,
     head_dim=128
 ):
     num_kv_heads = num_heads // gqa
@@ -135,7 +138,7 @@ def benchmark_flashattn_varlen(
             torch.autograd.backward(o, vo_grad)
 
     torch.cuda.synchronize()
-    
+
     if benchmark_bwd:
         o = func()
         vo_grad = torch.randn_like(q, dtype=torch.bfloat16)
