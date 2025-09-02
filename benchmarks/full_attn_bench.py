@@ -68,8 +68,6 @@ def get_bench_input_configs(head_dim=128):
         args={},
     )
 )
-
-
 def benchmark_flashattn_varlen(
     gqa,
     seq_lens,

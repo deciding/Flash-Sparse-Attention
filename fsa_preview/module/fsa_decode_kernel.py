@@ -6,7 +6,6 @@ from flash_attn import flash_attn_varlen_func
 from fsa_preview.ops import (_compressed_attention_decode,
                              _linear_compress_decode,
                              _topk_sparse_attention_decode)
-from nsa_ref.module.rope import RopeConfig, RotaryEmbedding
 
 
 class FlashSparseAttentionDecodeKernel(torch.nn.Module):

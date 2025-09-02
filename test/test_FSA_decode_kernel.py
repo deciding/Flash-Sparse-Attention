@@ -5,7 +5,6 @@ from functools import partial
 
 import torch
 
-from nsa_ref.module import RopeConfig
 from nsa_ref.ops import linear_compress
 from nsa_ref.ops.flash_attention import flash_attention_varlen
 from utils import cuda_timer
@@ -40,7 +39,8 @@ if __name__ == "__main__":
         kv_heads = args.heads // args.gqa_deg
     assert q_heads % args.gqa_deg == 0
 
-    from fsa_preview.module.fsa_decode_kernel import FlashSparseAttentionDecodeKernel
+    from fsa_preview.module.fsa_decode_kernel import \
+        FlashSparseAttentionDecodeKernel
 
     sparse_attn = (
         FlashSparseAttentionDecodeKernel(
