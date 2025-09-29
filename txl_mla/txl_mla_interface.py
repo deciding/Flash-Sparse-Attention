@@ -1,7 +1,7 @@
 from typing import Tuple
 import torch
 
-def flash_mla_sparse_fwd(
+def txl_mla_sparse_fwd(
     q: torch.Tensor,
     kv: torch.Tensor,
     indices: torch.Tensor,
@@ -29,3 +29,9 @@ def flash_mla_sparse_fwd(
         q, kv, indices, sm_scale, d_v
     )
     return results
+
+def sparse_prefill_fwd(q, kv, indices, sm_scale, d_v):
+    s_q = q.size(0)
+    print("q")
+    print(q.shape)
+    print(s_q)

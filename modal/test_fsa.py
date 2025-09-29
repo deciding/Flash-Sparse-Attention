@@ -78,5 +78,8 @@ def run_benchmark():
     #from tests.flash_mla.test_flash_mla_decoding import main
     #main(torch.bfloat16)
 
-    from tests.flash_mla.test_flash_mla_prefill import main
+    #from tests.flash_mla.test_flash_mla_prefill import main
+    #main()
+
+    from tests.txl_mla.test_txl_mla_prefill import main
     main()
