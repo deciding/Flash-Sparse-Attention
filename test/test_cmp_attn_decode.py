@@ -5,11 +5,24 @@ import torch
 from fsa_preview.ops import _linear_compress_decode
 from nsa_ref.ops import compressed_attention, linear_compress
 
+import triton.profiler as proton
+import triton.profiler.viewer as proton_viewer
+
 
 def create_cu_seqlens(seqlen: int) -> torch.Tensor:
     """Create cumulative sequence lengths tensor for batch processing."""
     return torch.arange(0, 2 * seqlen, seqlen, dtype=torch.int32)
 
+config = {
+    "seqlen": 65536,
+    "num_q_heads": 64,
+    "num_k_heads": 64,
+    "head_dim": 128,
+    "block_size": 64,
+    "topk": 16,
+    "warm_up": 5,
+    "benchmark_iters": 10,
+}
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark topk sparse attention kernels")
@@ -26,13 +39,13 @@ def parse_args():
     # Benchmark configuration
     parser.add_argument("--warm-up", type=int, default=5, help="Number of warm-up runs")
     parser.add_argument("--benchmark-iters", type=int, default=10, help="Number of benchmark runs")
+    parser.set_defaults(**config)
 
     return parser.parse_args()
 
-
-if __name__ == "__main__":
-
-    args = parse_args()
+def test_cmp_attn_decode(args=None):
+    if args is None:
+        args = argparse.Namespace(**config)
 
     seqlen = args.seqlen
     num_q_heads = args.num_q_heads
@@ -190,7 +203,8 @@ if __name__ == "__main__":
             combined_compressed_v = compressed_v_first
 
         compressed_seqlens_full = full_compressed_cu_seqlen[1:] - full_compressed_cu_seqlen[:-1]
-        attn_output_cur, topk_idx_cur = compressed_attention(
+
+        compressed_attention_func = lambda: compressed_attention(
             q=q,
             k=combined_compressed_k,
             v=combined_compressed_v,
@@ -207,6 +221,17 @@ if __name__ == "__main__":
             local_blocks=2,
             parallel_topk_compute=False,
         )
+        profile_name = "compressed_attention"
+        proton.start(profile_name, hook="triton")
+        for i in range(10):
+            compressed_attention_func()
+        proton.finalize()
+        metric_names = ["time/ms"]
+        file_name = f"{profile_name}.hatchet"
+        tree, metrics = proton_viewer.parse(metric_names, file_name)
+        proton_viewer.print_tree(tree, metrics)
+
+        attn_output_cur, topk_idx_cur = compressed_attention_func()
 
         # Check shapes match
         assert full_compressed_k.shape == combined_compressed_k.shape, \
@@ -236,3 +261,9 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("DECODE TESTING COMPLETED")
     print("="*60)
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    test_cmp_attn_decode(args)
+

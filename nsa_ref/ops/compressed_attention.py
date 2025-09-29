@@ -18,6 +18,7 @@ from typing import Any, Tuple, Union
 import torch
 import triton
 import triton.language as tl
+import triton.profiler as proton
 
 from nsa_ref.ops.utils import get_num_warps_stages, is_hopper_gpu
 
@@ -970,36 +971,37 @@ def _get_attention_score(
     BLOCK_SIZE_K = 128
     BLOCK_SIZE_D = triton.next_power_of_2(head_dim)
 
-    score_kernel[grid](
-        q,
-        k,
-        lse,
-        score,
-        kernel_size,
-        kernel_stride,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        num_k_heads,
-        num_share_q_heads,
-        head_dim,
-        sm_scale,
-        q.stride(0),
-        q.stride(1),
-        q.stride(2),
-        k.stride(0),
-        k.stride(1),
-        k.stride(2),
-        lse.stride(0),
-        lse.stride(1),
-        score.stride(0),
-        score.stride(1),
-        score.stride(2),
-        BLOCK_SIZE_Q=BLOCK_SIZE_Q,
-        BLOCK_SIZE_K=BLOCK_SIZE_K,
-        BLOCK_SIZE_D=BLOCK_SIZE_D,
-        num_warps=8,
-        num_stages=3,
-    )
+    with proton.scope('score_kernel'):
+        score_kernel[grid](
+            q,
+            k,
+            lse,
+            score,
+            kernel_size,
+            kernel_stride,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            num_k_heads,
+            num_share_q_heads,
+            head_dim,
+            sm_scale,
+            q.stride(0),
+            q.stride(1),
+            q.stride(2),
+            k.stride(0),
+            k.stride(1),
+            k.stride(2),
+            lse.stride(0),
+            lse.stride(1),
+            score.stride(0),
+            score.stride(1),
+            score.stride(2),
+            BLOCK_SIZE_Q=BLOCK_SIZE_Q,
+            BLOCK_SIZE_K=BLOCK_SIZE_K,
+            BLOCK_SIZE_D=BLOCK_SIZE_D,
+            num_warps=8,
+            num_stages=3,
+        )
     return score
 
 
@@ -1128,33 +1130,34 @@ def transform_score(
         )
         return grid
 
-    _transform_score_kernel[grid](
-        score,
-        block_score,
-        offs,
-        cu_seqlens_q,
-        num_k_heads,
-        offs.shape[0],
-        max_key_len,
-        max_blocks,
-        pad_len,
-        block_size,
-        block_size // kernel_stride,
-        init_blocks,
-        local_blocks,
-        score.stride(0),
-        score.stride(1),
-        score.stride(2),
-        block_score.stride(0),
-        block_score.stride(1),
-        block_score.stride(2),
-        TOTAL_QUERY_LEN=total_query_len,
-        BLOCK_SIZE_Q=BLOCK_SIZE_Q,
-        BLOCK_SIZE_K=BLOCK_SIZE_K,
-        BLOCK_SIZE_O=BLOCK_SIZE_O,
-        num_warps=4,
-        num_stages=3,
-    )
+    with proton.scope('_transform_score_kernel'):
+        _transform_score_kernel[grid](
+            score,
+            block_score,
+            offs,
+            cu_seqlens_q,
+            num_k_heads,
+            offs.shape[0],
+            max_key_len,
+            max_blocks,
+            pad_len,
+            block_size,
+            block_size // kernel_stride,
+            init_blocks,
+            local_blocks,
+            score.stride(0),
+            score.stride(1),
+            score.stride(2),
+            block_score.stride(0),
+            block_score.stride(1),
+            block_score.stride(2),
+            TOTAL_QUERY_LEN=total_query_len,
+            BLOCK_SIZE_Q=BLOCK_SIZE_Q,
+            BLOCK_SIZE_K=BLOCK_SIZE_K,
+            BLOCK_SIZE_O=BLOCK_SIZE_O,
+            num_warps=4,
+            num_stages=3,
+        )
     return block_score
 
 
@@ -1204,18 +1207,19 @@ def compressed_attention(
     if max_seqlen_k is None:
         max_seqlen_k = (cu_seqlens_k[1:] - cu_seqlens_k[:-1]).max().item()
 
-    attn_output, lse = CompressedAttention.apply(
-        q,
-        k,
-        v,
-        kernel_size,
-        kernel_stride,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        max_seqlen_q,
-        max_seqlen_k,
-        sm_scale,
-    )
+    with proton.scope('CompressedAttention.apply'):
+        attn_output, lse = CompressedAttention.apply(
+            q,
+            k,
+            v,
+            kernel_size,
+            kernel_stride,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            max_seqlen_q,
+            max_seqlen_k,
+            sm_scale,
+        )
 
     # do not select topk index
     if topk <= 0:
@@ -1277,31 +1281,33 @@ def compressed_attention(
             assert num_k_heads % head_tile == 0, f"Num kv heads: {num_k_heads}, head_tile: {head_tile}"
             for h in range(num_k_heads // head_tile):
                 # recompute score
-                score = _get_attention_score(
-                    q[:, h * num_shared_q_heads * head_tile: (h + 1) * num_shared_q_heads * head_tile],
-                    k[:, h * head_tile: (h + 1) * head_tile],
-                    lse[h * num_shared_q_heads * head_tile: (h + 1) * num_shared_q_heads * head_tile],
-                    kernel_size,
-                    kernel_stride,
-                    cu_seqlens_q,
-                    cu_seqlens_k,
-                    max_seqlen_q,
-                    max_seqlen_k,
-                    sm_scale,
-                )
+                with proton.scope('_get_attention_score'):
+                    score = _get_attention_score(
+                        q[:, h * num_shared_q_heads * head_tile: (h + 1) * num_shared_q_heads * head_tile],
+                        k[:, h * head_tile: (h + 1) * head_tile],
+                        lse[h * num_shared_q_heads * head_tile: (h + 1) * num_shared_q_heads * head_tile],
+                        kernel_size,
+                        kernel_stride,
+                        cu_seqlens_q,
+                        cu_seqlens_k,
+                        max_seqlen_q,
+                        max_seqlen_k,
+                        sm_scale,
+                    )
                 # transform score to block-wise score
-                score = transform_score(
-                    score,
-                    kernel_size,
-                    kernel_stride,
-                    block_size,
-                    cu_seqlens_q,
-                    cu_seqlens_k,
-                    max_seqlen_q,
-                    max_seqlen_k,
-                    init_blocks,
-                    local_blocks,
-                )
+                with proton.scope('transform_score'):
+                    score = transform_score(
+                        score,
+                        kernel_size,
+                        kernel_stride,
+                        block_size,
+                        cu_seqlens_q,
+                        cu_seqlens_k,
+                        max_seqlen_q,
+                        max_seqlen_k,
+                        init_blocks,
+                        local_blocks,
+                    )
                 # get topk
                 topk = min(topk, score.shape[-1])
                 if score.dtype == torch.float32:
