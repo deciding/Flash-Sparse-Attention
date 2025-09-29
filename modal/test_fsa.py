@@ -6,6 +6,7 @@ local_dir = Path(__file__).parent.parent
 
 flash_attn_wheel_name = "flash_attn_3-3.0.0b1-cp39-abi3-linux_x86_64.whl"
 flash_attn_wheel_file = local_dir / flash_attn_wheel_name
+# NOTE: remember to copy the flash_mla/cuda...so manually to flash_mla dir
 
 # Define the image: start from debian-slim + python3.12
 nsa_image = (
@@ -38,6 +39,7 @@ volume = Volume.from_name("fsa-dump", create_if_missing=True) # create a cloud v
 def run_benchmark():
     import subprocess
     import sys
+    import torch
 
     def get_gpu_type():
         import subprocess
@@ -62,9 +64,11 @@ def run_benchmark():
     if not get_gpu_type():
         return
 
-    #from test.test_cmp_attn_decode import test_cmp_attn_decode
+    #from tests.fsa.test_cmp_attn_decode import test_cmp_attn_decode
     #test_cmp_attn_decode()
 
-    from nsa.benchmark_nsa import benchmark
-    benchmark.run(print_data=True, save_path='.')
+    #from tests.nsa.benchmark_nsa import benchmark
+    #benchmark.run(print_data=True, save_path='.')
 
+    from tests.flash_mla.test_flash_mla_decoding import main
+    main(torch.bfloat16)
