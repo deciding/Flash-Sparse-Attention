@@ -1,23 +1,34 @@
 import modal
+from modal import Image, App, Volume
+
 from pathlib import Path
 local_dir = Path(__file__).parent.parent
 
+flash_attn_wheel_name = "flash_attn_3-3.0.0b1-cp39-abi3-linux_x86_64.whl"
+flash_attn_wheel_file = local_dir / flash_attn_wheel_name
+
 # Define the image: start from debian-slim + python3.12
 nsa_image = (
-    modal.Image.debian_slim(python_version="3.12")
+    Image.debian_slim(python_version="3.12")
     #.pip_install("torch")
     #.apt_install("git", "build-essential", "cmake", "ninja-build")
     .pip_install_from_requirements(local_dir / 'requirements.txt') # local file not remote file
+    .add_local_file(flash_attn_wheel_file, remote_path="/workspace/", copy=True) # copy the local code to the image
+    .run_commands(
+        f"pip install /workspace/{flash_attn_wheel_name}",
+    )
     .workdir("/workspace")
     .add_local_dir(
         local_dir,
         remote_path='/workspace/',
-        ignore=[".git"]
+        ignore=[".git", "*.whl"]
     )
 )
 
 # Define the app
-app = modal.App("flash-sparse-attention")
+app = App("flash-sparse-attention")
+
+volume = Volume.from_name("fsa-dump", create_if_missing=True) # create a cloud volume to store compiled dump files
 
 @app.function(
     image=nsa_image,
@@ -51,6 +62,9 @@ def run_benchmark():
     if not get_gpu_type():
         return
 
-    from test.test_cmp_attn_decode import test_cmp_attn_decode
-    test_cmp_attn_decode()
+    #from test.test_cmp_attn_decode import test_cmp_attn_decode
+    #test_cmp_attn_decode()
+
+    from nsa.benchmark_nsa import benchmark
+    benchmark.run(print_data=True, save_path='.')
 

