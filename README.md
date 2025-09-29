@@ -16,9 +16,12 @@ curl -A "custom-agent" -F"file=@flash_attn_3-3.0.0b1-cp39-abi3-linux_x86_64.whl"
 # move to flash_mla
 tar czf cuda.cpython-312-x86_64-linux-gnu.so.tar.gz flash_mla/cuda.cpython-312-x86_64-linux-gnu.so
 curl -A "custom-agent" -F"file=@cuda.cpython-312-x86_64-linux-gnu.so.tar.gz" https://0x0.st
+# move to root dir
+curl -A "custom-agent" -F"file=@txl-3.4.0-cp312-cp312-linux_x86_64.whl" https://0x0.st
 
 FlashAttn: https://0x0.st/KBJ7.whl
 FlashMLA: https://0x0.st/KBxs.tar.gz
+TXL: https://0x0.st/KBx8.whl
 ```
 
 This repository provides the official implementation of **<ins>F</ins>lash <ins>S</ins>parse <ins>A</ins>ttention (FSA)**, which includes a novel kernel design that enables efficient Native Sparse Attention (NSA) across a wide range of popular LLMs on modern GPUs.

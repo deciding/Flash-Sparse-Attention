@@ -8,6 +8,9 @@ flash_attn_wheel_name = "flash_attn_3-3.0.0b1-cp39-abi3-linux_x86_64.whl"
 flash_attn_wheel_file = local_dir / flash_attn_wheel_name
 # NOTE: remember to copy the flash_mla/cuda...so manually to flash_mla dir
 
+txl_wheel_name = "txl-3.4.0-cp312-cp312-linux_x86_64.whl"
+txl_wheel_file = local_dir / txl_wheel_name
+
 # Define the image: start from debian-slim + python3.12
 nsa_image = (
     Image.debian_slim(python_version="3.12")
@@ -15,8 +18,10 @@ nsa_image = (
     #.apt_install("git", "build-essential", "cmake", "ninja-build")
     .pip_install_from_requirements(local_dir / 'requirements.txt') # local file not remote file
     .add_local_file(flash_attn_wheel_file, remote_path="/workspace/", copy=True) # copy the local code to the image
+    .add_local_file(txl_wheel_file, remote_path="/workspace/", copy=True) # copy the local code to the image
     .run_commands(
         f"pip install /workspace/{flash_attn_wheel_name}",
+        f"pip install /workspace/{txl_wheel_name}",
     )
     .workdir("/workspace")
     .add_local_dir(
@@ -70,5 +75,8 @@ def run_benchmark():
     #from tests.nsa.benchmark_nsa import benchmark
     #benchmark.run(print_data=True, save_path='.')
 
-    from tests.flash_mla.test_flash_mla_decoding import main
-    main(torch.bfloat16)
+    #from tests.flash_mla.test_flash_mla_decoding import main
+    #main(torch.bfloat16)
+
+    from tests.flash_mla.test_flash_mla_prefill import main
+    main()

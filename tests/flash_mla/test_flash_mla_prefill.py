@@ -8,7 +8,7 @@ import torch
 import triton
 
 from flash_mla import flash_mla_sparse_fwd
-from lib import check_is_allclose
+from tests.flash_mla.lib import check_is_allclose
 
 @dataclasses.dataclass
 class TestParam:
@@ -129,7 +129,7 @@ def run_test(p: TestParam) -> bool:
         return True
 
 
-if __name__ == '__main__':
+def main():
     device = torch.device("cuda:0")
     torch.set_default_dtype(torch.bfloat16)
     torch.set_default_device(device)
@@ -195,3 +195,5 @@ if __name__ == '__main__':
     else:
         print(f"\033[32m\033[1mAll {len(testcases)} cases passed!\033[0m")
 
+if __name__ == '__main__':
+    main()
